@@ -3,9 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Activity, ArrowDownToLine, ArrowUpFromLine, ChevronLeft, CircleDollarSign,
-  Clipboard, Coins, Crown, Gamepad2, Gift, Home, LockKeyhole, Menu, Palette,
+  Bot, Clipboard, Coins, Crown, Crosshair, Gamepad2, Gift, Home, LockKeyhole,
+  Maximize2, Menu, Minimize2, Palette,
   Play, Settings2, Share2, ShieldCheck, ShoppingBag, SlidersHorizontal,
-  Sparkles, Trophy, UserRoundPlus, Users, Volume2, WalletCards,
+  Sparkles, Trophy, UserRoundPlus, Users, Volume2, WalletCards, Wifi, Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +25,11 @@ const tiers = [
   { cents: 100, value: "$1.00", label: "المحترفون", tone: "coral", locked: true },
 ] as const;
 const leaders = [["ليث", "$1.40"], ["نور", "$0.95"], ["كريم", "$0.80"], ["سما", "$0.55"], ["آدم", "$0.40"]];
+const botNames = ["برق", "نمر", "شبح", "صقر", "موج", "لهب", "ورد", "رعد", "نسر", "فهد", "نور", "سيف", "نجم", "قمر", "ذئب", "ريح", "شمس", "لؤلؤ", "شاهين", "كوبرا", "زمرّد", "عنبر", "مرجان", "ياسمين", "رمح", "أطلس", "وادي", "جبل", "بركان"];
+const botPalette = [
+  ["#56d6aa", "#fff4d1"], ["#ffd858", "#173e68"], ["#718ef2", "#ffffff"],
+  ["#f27c68", "#fff3db"], ["#d66bea", "#fff1a8"], ["#42bfe7", "#ffffff"],
+];
 const navItems: Array<{ view: View; href: string; label: string; icon: typeof Home }> = [
   { view: "lobby", href: "/", label: "الرئيسية", icon: Home },
   { view: "roulette", href: "/roulette", label: "الروليت", icon: Gift },
@@ -34,13 +40,20 @@ const navItems: Array<{ view: View; href: string; label: string; icon: typeof Ho
   { view: "settings", href: "/settings", label: "الإعدادات", icon: Settings2 },
 ];
 
-function drawSnake(ctx: CanvasRenderingContext2D, points: Array<[number, number]>, primary: string, secondary: string, pattern = "dots") {
-  ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = primary; ctx.lineWidth = 22;
+function drawSnake(ctx: CanvasRenderingContext2D, points: Array<[number, number]>, primary: string, secondary: string, pattern = "dots", width = 22) {
+  if (points.length < 2) return;
+  ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = primary; ctx.lineWidth = width;
   ctx.beginPath(); points.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.stroke();
-  ctx.strokeStyle = secondary; ctx.lineWidth = 5; ctx.setLineDash(pattern === "bands" ? [8, 12] : pattern === "stars" ? [2, 18] : [3, 14]); ctx.stroke(); ctx.setLineDash([]);
-  const [hx, hy] = points.at(-1)!; ctx.fillStyle = primary; ctx.beginPath(); ctx.arc(hx + 4, hy, 15, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = "white"; ctx.beginPath(); ctx.arc(hx + 10, hy - 5, 4.4, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = "#102d4b"; ctx.beginPath(); ctx.arc(hx + 11, hy - 5, 1.8, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = secondary; ctx.lineWidth = Math.max(3, width * .23); ctx.setLineDash(pattern === "bands" ? [8, 12] : pattern === "stars" ? [2, 18] : [3, 14]); ctx.stroke(); ctx.setLineDash([]);
+  const [hx, hy] = points.at(-1)!; const head = width * .68; ctx.fillStyle = primary; ctx.beginPath(); ctx.arc(hx + width * .18, hy, head, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "white"; ctx.beginPath(); ctx.arc(hx + width * .43, hy - width * .2, Math.max(3, width * .2), 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#102d4b"; ctx.beginPath(); ctx.arc(hx + width * .46, hy - width * .2, Math.max(1.4, width * .08), 0, Math.PI * 2); ctx.fill();
+}
+
+function drawBotLabel(ctx: CanvasRenderingContext2D, x: number, y: number, name: string) {
+  const label = `BOT • ${name}`; ctx.font = "700 10px Tahoma, Arial"; const width = ctx.measureText(label).width + 13;
+  ctx.fillStyle = "rgba(3,17,32,.76)"; ctx.beginPath(); ctx.roundRect(x - width / 2, y - 29, width, 18, 7); ctx.fill();
+  ctx.fillStyle = "rgba(255,255,255,.92)"; ctx.textAlign = "center"; ctx.fillText(label, x, y - 16);
 }
 
 function Arena({ interactive = false, style }: { interactive?: boolean; style?: SnakeStyle }) {
@@ -49,6 +62,10 @@ function Arena({ interactive = false, style }: { interactive?: boolean; style?: 
   useEffect(() => {
     const canvas = canvasRef.current; const ctx = canvas?.getContext("2d"); if (!canvas || !ctx) return;
     let frame = 0; let animation = 0; const player = { x: 320, y: 280, angle: 0, body: [] as Array<[number, number]> };
+    const bots = botNames.map((name, index) => ({
+      name, x: 0, y: 0, angle: (index * 1.87) % (Math.PI * 2), speed: 1.05 + (index % 5) * .11,
+      turn: .004 + (index % 4) * .0015, body: [] as Array<[number, number]>, initialized: false,
+    }));
     const draw = () => {
       const rect = canvas.getBoundingClientRect(); const dpr = Math.min(window.devicePixelRatio || 1, 2); const w = rect.width; const h = rect.height;
       if (canvas.width !== Math.floor(w * dpr) || canvas.height !== Math.floor(h * dpr)) { canvas.width = Math.floor(w * dpr); canvas.height = Math.floor(h * dpr); }
@@ -56,7 +73,22 @@ function Arena({ interactive = false, style }: { interactive?: boolean; style?: 
       ctx.strokeStyle = "rgba(255,255,255,.05)"; ctx.lineWidth = 1; for (let x = 0; x < w; x += 32) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); } for (let y = 0; y < h; y += 32) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
       for (let i = 0; i < 34; i++) { const px = (i * 83 + 31) % Math.max(w, 1); const py = (i * 47 + 53) % Math.max(h, 1); ctx.beginPath(); ctx.fillStyle = i % 3 ? "#70dfb7" : "#ffd858"; ctx.arc(px, py, 2.5 + i % 2, 0, Math.PI * 2); ctx.fill(); }
       if (interactive) {
+        bots.forEach((bot, index) => {
+          if (!bot.initialized) {
+            const columns = Math.max(5, Math.min(8, Math.floor(w / 120))); const rows = Math.ceil(bots.length / columns); const column = index % columns; const row = Math.floor(index / columns);
+            bot.x = 42 + column * ((w - 84) / Math.max(1, columns - 1)) + ((index * 7) % 15 - 7); bot.y = 88 + row * ((h - 140) / Math.max(1, rows - 1)) + ((index * 11) % 17 - 8);
+            const initialLength = 15 + index % 12; for (let segment = initialLength; segment >= 0; segment--) bot.body.push([bot.x - Math.cos(bot.angle) * segment * 4.5, bot.y - Math.sin(bot.angle) * segment * 4.5]);
+            bot.initialized = true;
+          }
+          bot.angle += Math.sin(frame / (70 + index % 9) + index * .74) * bot.turn;
+          const margin = 30; if (bot.x < margin || bot.x > w - margin) bot.angle = Math.PI - bot.angle; if (bot.y < 70 || bot.y > h - margin) bot.angle = -bot.angle;
+          bot.x = Math.max(margin, Math.min(w - margin, bot.x + Math.cos(bot.angle) * bot.speed)); bot.y = Math.max(70, Math.min(h - margin, bot.y + Math.sin(bot.angle) * bot.speed));
+          bot.body.push([bot.x, bot.y]); if (bot.body.length > 15 + index % 12) bot.body.shift();
+          const colors = botPalette[index % botPalette.length]; drawSnake(ctx, bot.body, colors[0], colors[1], index % 3 === 0 ? "bands" : "dots", 12 + index % 4);
+          if (index < 10) drawBotLabel(ctx, bot.x, bot.y, `${String(index + 1).padStart(2, "0")} • ${bot.name}`);
+        });
         const wanted = Math.atan2(target.current.y - player.y, target.current.x - player.x); let diff = ((wanted - player.angle + Math.PI * 3) % (Math.PI * 2)) - Math.PI; player.angle += Math.max(-.08, Math.min(.08, diff)); player.x = Math.max(24, Math.min(w - 24, player.x + Math.cos(player.angle) * 2.3)); player.y = Math.max(66, Math.min(h - 24, player.y + Math.sin(player.angle) * 2.3)); player.body.push([player.x, player.y]); if (player.body.length > 42) player.body.shift(); drawSnake(ctx, player.body, style?.primary ?? "#ef4f4f", style?.secondary ?? "#fff4d1", style?.pattern);
+        ctx.font = "900 11px Tahoma, Arial"; ctx.textAlign = "center"; ctx.fillStyle = "#ffe176"; ctx.fillText("أنت", player.x, player.y - 24);
       } else {
         [{ c: "#ef4f4f", a: "#fff4d1", y: .35, p: 0 }, { c: "#4fc798", a: "#fff4d1", y: .62, p: 1.7 }, { c: "#ffd858", a: "#16385f", y: .82, p: 3.2 }].forEach((s, n) => { const pts: Array<[number, number]> = []; for (let i = 0; i < 14; i++) pts.push([w * (.12 + n * .25) + i * 8 + Math.sin(frame / 48 + s.p) * 18, h * s.y + Math.sin(i * .46 + frame / 24 + s.p) * 18]); drawSnake(ctx, pts, s.c, s.a); });
       }
@@ -92,11 +124,30 @@ function Lobby() {
 }
 
 function GameView() {
-  const [seconds, setSeconds] = useState(300); const [queued, setQueued] = useState(true);
-  useEffect(() => { const queue = window.setTimeout(() => setQueued(false), 1400); return () => clearTimeout(queue); }, []);
+  const [seconds, setSeconds] = useState(300); const [queued, setQueued] = useState(true); const [expanded, setExpanded] = useState(false); const stageRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { const queue = window.setTimeout(() => setQueued(false), 1200); return () => clearTimeout(queue); }, []);
   useEffect(() => { if (queued) return; const timer = window.setInterval(() => setSeconds(s => Math.max(0, s - 1)), 1000); return () => clearInterval(timer); }, [queued]);
+  useEffect(() => { const sync = () => setExpanded(Boolean(document.fullscreenElement)); document.addEventListener("fullscreenchange", sync); return () => document.removeEventListener("fullscreenchange", sync); }, []);
+  const toggleFullscreen = async () => {
+    if (expanded) { if (document.fullscreenElement) await document.exitFullscreen(); else setExpanded(false); return; }
+    try { await stageRef.current?.requestFullscreen(); setExpanded(true); } catch { setExpanded(true); }
+  };
   const time = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
-  return <section className="play-layout"><Leaderboard /><div className="arena-card live-game"><div className="arena-head"><div><span className="live-dot" /> {queued ? "تجهيز الغرفة" : "الجولة جارية"}</div><strong>{time}</strong><span>{queued ? "إضافة لاعبين آليين…" : "30 لاعباً"}</span></div><Arena interactive /><div className="game-stats"><span>الإقصاءات <b>2</b></span><span>الأرباح <bdi>$0.02</bdi></span><span>الترتيب <b>#6</b></span></div>{queued && <div className="queue-cover"><div className="spinner-ring" /><h1>نجهّز الحلبة</h1><p>سيبدأ اللعب خلال لحظات</p></div>}</div><aside className="paper-card game-help"><Gamepad2 /><h2>حرّك ثعبانك</h2><p>وجّه المؤشر أو إصبعك نحو المكان الذي تريد الوصول إليه.</p><div className="ticket-line"><span>قيمة الجولة</span><bdi>$0.01</bdi></div><Button variant="outline" asChild><a href="/">مغادرة الجولة</a></Button></aside></section>;
+  return <section className="play-experience"><div className={`game-stage ${expanded ? "is-expanded" : ""}`} ref={stageRef}>
+    <div className="match-commandbar">
+      <div className="match-brand"><span className="brand-mark">S</span><div><b>SNAKES ARENA</b><small><span className="live-dot" /> مباراة مباشرة</small></div></div>
+      <div className="command-metrics"><span><Users /> <bdi>30 / 30</bdi><small>اللاعبون</small></span><span><Wifi /> <bdi>28 ms</bdi><small>الاتصال</small></span><span><Zap /> <bdi>$0.10</bdi><small>الجولة</small></span></div>
+      <button className="fullscreen-button" onClick={() => void toggleFullscreen()} aria-label={expanded ? "الخروج من ملء الشاشة" : "ملء الشاشة"}>{expanded ? <Minimize2 /> : <Maximize2 />}<span>{expanded ? "تصغير" : "ملء الشاشة"}</span></button>
+    </div>
+    <div className="match-leaders" aria-label="أفضل خمسة لاعبين"><span className="leaders-title"><Trophy /> الصدارة</span>{leaders.map(([name, amount], index) => <div key={name} className={index === 0 ? "leader-first" : ""}><b>{index + 1}</b><span>{name}</span><bdi>{amount}</bdi></div>)}</div>
+    <div className="arena-card live-game"><div className="arena-head"><div><span className="live-dot" /> {queued ? "تجهيز الغرفة" : "الجولة جارية"}</div><strong>{time}</strong><span><Bot /> {queued ? "إضافة اللاعبين الآليين…" : "29 BOT + أنت"}</span></div><Arena interactive />
+      <div className="combat-hud"><div><Crosshair /><span>الإقصاءات</span><b>2</b></div><div><Coins /><span>الأرباح</span><bdi>$0.02</bdi></div><div><Crown /><span>الترتيب</span><b>#6</b></div></div>
+      <div className="control-tip"><span className="control-orbit"><Crosshair /></span><span><b>التحكم</b> حرّك المؤشر أو إصبعك لتغيير الاتجاه</span></div>
+      <div className="kill-feed"><span><b>BOT • برق</b> أقصى BOT • موج</span><span><b>BOT • شبح</b> اصطدم بالجدار</span></div>
+      {queued && <div className="queue-cover"><div className="spinner-ring" /><h1>اكتملت الغرفة</h1><p>أنت و29 لاعباً آلياً — تبدأ الجولة الآن</p></div>}
+    </div>
+    <div className="match-footer"><span><ShieldCheck /> الخادم هو المصدر المعتمد للنتائج</span><span className="demo-pill">رصيد تجريبي — بلا قيمة نقدية</span><a href="/">مغادرة الجولة</a></div>
+  </div></section>;
 }
 
 function WalletView({ balance, setBalance }: { balance: number; setBalance: React.Dispatch<React.SetStateAction<number>> }) {
