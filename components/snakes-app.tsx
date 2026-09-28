@@ -18,6 +18,7 @@ import { apiRequest } from "@/lib/api";
 
 type View = "lobby" | "game" | "wallet" | "roulette" | "snake" | "referrals" | "settings" | "store" | "admin" | "login" | "register";
 type SnakeStyle = { primary: string; secondary: string; pattern: "dots" | "bands" | "stars" };
+type ArenaStats = { kills: number; players: number; mass: number };
 
 const tiers = [
   { cents: 1, value: "$0.01", label: "للمبتدئين", tone: "mint", locked: false },
@@ -56,48 +57,81 @@ function drawBotLabel(ctx: CanvasRenderingContext2D, x: number, y: number, name:
   ctx.fillStyle = "rgba(255,255,255,.92)"; ctx.textAlign = "center"; ctx.fillText(label, x, y - 16);
 }
 
-function Arena({ interactive = false, style }: { interactive?: boolean; style?: SnakeStyle }) {
+function Arena({ interactive = false, style, onStats }: { interactive?: boolean; style?: SnakeStyle; onStats?: React.Dispatch<React.SetStateAction<ArenaStats>> }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const target = useRef({ x: 430, y: 260 });
   useEffect(() => {
     const canvas = canvasRef.current; const ctx = canvas?.getContext("2d"); if (!canvas || !ctx) return;
-    let frame = 0; let animation = 0; const player = { x: 320, y: 280, angle: 0, body: [] as Array<[number, number]> };
+    const worldWidth = 4200; const worldHeight = 2800;
+    let frame = 0; let animation = 0; let kills = 0; let collectedMass = 0; let bodyLimit = 42; let lastReport = "";
+    const player = { x: worldWidth / 2, y: worldHeight / 2, angle: 0, body: [] as Array<[number, number]>, initialized: false };
+    const camera = { x: 0, y: 0, initialized: false };
+    const massPellets: Array<{ x: number; y: number; color: string; size: number }> = [];
     const bots = botNames.map((name, index) => ({
       name, x: 0, y: 0, angle: (index * 1.87) % (Math.PI * 2), speed: 1.05 + (index % 5) * .11,
-      turn: .004 + (index % 4) * .0015, body: [] as Array<[number, number]>, initialized: false,
+      turn: .004 + (index % 4) * .0015, body: [] as Array<[number, number]>, initialized: false, alive: true,
     }));
+    const reportStats = () => { const key = `${kills}:${collectedMass}:${bodyLimit}`; if (key === lastReport) return; lastReport = key; onStats?.({ kills, players: 30 - kills, mass: bodyLimit }); };
     const draw = () => {
       const rect = canvas.getBoundingClientRect(); const dpr = Math.min(window.devicePixelRatio || 1, 2); const w = rect.width; const h = rect.height;
       if (canvas.width !== Math.floor(w * dpr) || canvas.height !== Math.floor(h * dpr)) { canvas.width = Math.floor(w * dpr); canvas.height = Math.floor(h * dpr); }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0); const g = ctx.createLinearGradient(0, 0, w, h); g.addColorStop(0, "#173e68"); g.addColorStop(1, "#071d34"); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
-      ctx.strokeStyle = "rgba(255,255,255,.05)"; ctx.lineWidth = 1; for (let x = 0; x < w; x += 32) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); } for (let y = 0; y < h; y += 32) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
-      for (let i = 0; i < 34; i++) { const px = (i * 83 + 31) % Math.max(w, 1); const py = (i * 47 + 53) % Math.max(h, 1); ctx.beginPath(); ctx.fillStyle = i % 3 ? "#70dfb7" : "#ffd858"; ctx.arc(px, py, 2.5 + i % 2, 0, Math.PI * 2); ctx.fill(); }
       if (interactive) {
         bots.forEach((bot, index) => {
+          if (!bot.alive) return;
           if (!bot.initialized) {
-            const columns = Math.max(5, Math.min(8, Math.floor(w / 120))); const rows = Math.ceil(bots.length / columns); const column = index % columns; const row = Math.floor(index / columns);
-            bot.x = 42 + column * ((w - 84) / Math.max(1, columns - 1)) + ((index * 7) % 15 - 7); bot.y = 88 + row * ((h - 140) / Math.max(1, rows - 1)) + ((index * 11) % 17 - 8);
+            const columns = 7; const column = index % columns; const row = Math.floor(index / columns);
+            bot.x = worldWidth / 2 + (column - 3) * 175 + ((index * 7) % 31 - 15); bot.y = worldHeight / 2 + (row - 2) * 150 + ((index * 11) % 29 - 14);
+            const startDx = bot.x - worldWidth / 2; const startDy = bot.y - worldHeight / 2; const startDistance = Math.hypot(startDx, startDy); if (startDistance < 315) { const startAngle = startDistance < 1 ? index * .7 : Math.atan2(startDy, startDx); bot.x = worldWidth / 2 + Math.cos(startAngle) * 325; bot.y = worldHeight / 2 + Math.sin(startAngle) * 325; }
+            if (index === 17) { bot.x = worldWidth / 2 + 300; bot.y = worldHeight / 2; bot.angle = Math.PI; }
             const initialLength = 15 + index % 12; for (let segment = initialLength; segment >= 0; segment--) bot.body.push([bot.x - Math.cos(bot.angle) * segment * 4.5, bot.y - Math.sin(bot.angle) * segment * 4.5]);
             bot.initialized = true;
           }
           bot.angle += Math.sin(frame / (70 + index % 9) + index * .74) * bot.turn;
-          const margin = 30; if (bot.x < margin || bot.x > w - margin) bot.angle = Math.PI - bot.angle; if (bot.y < 70 || bot.y > h - margin) bot.angle = -bot.angle;
-          bot.x = Math.max(margin, Math.min(w - margin, bot.x + Math.cos(bot.angle) * bot.speed)); bot.y = Math.max(70, Math.min(h - margin, bot.y + Math.sin(bot.angle) * bot.speed));
+          const margin = 42; if (bot.x < margin || bot.x > worldWidth - margin) bot.angle = Math.PI - bot.angle; if (bot.y < margin || bot.y > worldHeight - margin) bot.angle = -bot.angle;
+          bot.x = Math.max(margin, Math.min(worldWidth - margin, bot.x + Math.cos(bot.angle) * bot.speed)); bot.y = Math.max(margin, Math.min(worldHeight - margin, bot.y + Math.sin(bot.angle) * bot.speed));
           bot.body.push([bot.x, bot.y]); if (bot.body.length > 15 + index % 12) bot.body.shift();
-          const colors = botPalette[index % botPalette.length]; drawSnake(ctx, bot.body, colors[0], colors[1], index % 3 === 0 ? "bands" : "dots", 12 + index % 4);
-          if (index < 10) drawBotLabel(ctx, bot.x, bot.y, `${String(index + 1).padStart(2, "0")} • ${bot.name}`);
         });
-        const wanted = Math.atan2(target.current.y - player.y, target.current.x - player.x); let diff = ((wanted - player.angle + Math.PI * 3) % (Math.PI * 2)) - Math.PI; player.angle += Math.max(-.08, Math.min(.08, diff)); player.x = Math.max(24, Math.min(w - 24, player.x + Math.cos(player.angle) * 2.3)); player.y = Math.max(66, Math.min(h - 24, player.y + Math.sin(player.angle) * 2.3)); player.body.push([player.x, player.y]); if (player.body.length > 42) player.body.shift(); drawSnake(ctx, player.body, style?.primary ?? "#ef4f4f", style?.secondary ?? "#fff4d1", style?.pattern);
-        ctx.font = "900 11px Tahoma, Arial"; ctx.textAlign = "center"; ctx.fillStyle = "#ffe176"; ctx.fillText("أنت", player.x, player.y - 24);
+        if (!player.initialized) { for (let segment = 38; segment >= 0; segment--) player.body.push([player.x - segment * 5, player.y]); player.initialized = true; }
+        if (!camera.initialized) { camera.x = Math.max(0, player.x - w / 2); camera.y = Math.max(0, player.y - h / 2); target.current = { x: w * .72, y: h * .5 }; camera.initialized = true; }
+        const screenX = player.x - camera.x; const screenY = player.y - camera.y; const wanted = Math.atan2(target.current.y - screenY, target.current.x - screenX); let diff = ((wanted - player.angle + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+        player.angle += Math.max(-.075, Math.min(.075, diff)); player.x = Math.max(30, Math.min(worldWidth - 30, player.x + Math.cos(player.angle) * 2.55)); player.y = Math.max(30, Math.min(worldHeight - 30, player.y + Math.sin(player.angle) * 2.55)); player.body.push([player.x, player.y]); if (player.body.length > bodyLimit) player.body.shift();
+
+        bots.forEach((bot, index) => {
+          if (!bot.alive || !bot.initialized) return;
+          const touched = bot.body.some((segment, segmentIndex) => segmentIndex % 2 === 0 && Math.hypot(player.x - segment[0], player.y - segment[1]) < 25);
+          if (!touched) return;
+          bot.alive = false; kills += 1; const colors = botPalette[index % botPalette.length];
+          bot.body.forEach((segment, segmentIndex) => { if (segmentIndex % 2 !== 0) return; massPellets.push({ x: segment[0] + ((segmentIndex * 7) % 9 - 4), y: segment[1] + ((segmentIndex * 11) % 9 - 4), color: colors[0], size: 5 + segmentIndex % 4 }); });
+          reportStats();
+        });
+        for (let pelletIndex = massPellets.length - 1; pelletIndex >= 0; pelletIndex--) { const pellet = massPellets[pelletIndex]; if (Math.hypot(player.x - pellet.x, player.y - pellet.y) >= 30) continue; massPellets.splice(pelletIndex, 1); collectedMass += 1; bodyLimit = Math.min(150, bodyLimit + 2); reportStats(); }
+
+        const edgeX = Math.min(220, w * .3); const edgeY = Math.min(175, h * .28); const nextScreenX = player.x - camera.x; const nextScreenY = player.y - camera.y; let desiredX = camera.x; let desiredY = camera.y;
+        if (nextScreenX < edgeX) desiredX = player.x - edgeX; else if (nextScreenX > w - edgeX) desiredX = player.x - (w - edgeX);
+        if (nextScreenY < edgeY) desiredY = player.y - edgeY; else if (nextScreenY > h - edgeY) desiredY = player.y - (h - edgeY);
+        desiredX = Math.max(0, Math.min(Math.max(0, worldWidth - w), desiredX)); desiredY = Math.max(0, Math.min(Math.max(0, worldHeight - h), desiredY)); camera.x += (desiredX - camera.x) * .085; camera.y += (desiredY - camera.y) * .085;
+
+        ctx.setTransform(dpr, 0, 0, dpr, -camera.x * dpr, -camera.y * dpr);
+        const grid = 64; ctx.strokeStyle = "rgba(255,255,255,.055)"; ctx.lineWidth = 1;
+        for (let x = Math.floor(camera.x / grid) * grid; x <= camera.x + w + grid; x += grid) { ctx.beginPath(); ctx.moveTo(x, camera.y); ctx.lineTo(x, camera.y + h); ctx.stroke(); }
+        for (let y = Math.floor(camera.y / grid) * grid; y <= camera.y + h + grid; y += grid) { ctx.beginPath(); ctx.moveTo(camera.x, y); ctx.lineTo(camera.x + w, y); ctx.stroke(); }
+        for (let i = 0; i < 210; i++) { const px = 80 + ((i * 197 + 31) % (worldWidth - 160)); const py = 80 + ((i * 139 + 53) % (worldHeight - 160)); if (px < camera.x - 10 || px > camera.x + w + 10 || py < camera.y - 10 || py > camera.y + h + 10) continue; ctx.beginPath(); ctx.fillStyle = i % 3 ? "#70dfb7" : "#ffd858"; ctx.arc(px, py, 2.5 + i % 2, 0, Math.PI * 2); ctx.fill(); }
+        massPellets.forEach(pellet => { if (pellet.x < camera.x - 15 || pellet.x > camera.x + w + 15 || pellet.y < camera.y - 15 || pellet.y > camera.y + h + 15) return; ctx.shadowColor = pellet.color; ctx.shadowBlur = 14; ctx.fillStyle = pellet.color; ctx.beginPath(); ctx.arc(pellet.x, pellet.y, pellet.size, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0; ctx.fillStyle = "rgba(255,255,255,.85)"; ctx.beginPath(); ctx.arc(pellet.x - 1.5, pellet.y - 1.5, Math.max(1.3, pellet.size * .27), 0, Math.PI * 2); ctx.fill(); });
+        ctx.shadowColor = "rgba(239,79,79,.82)"; ctx.shadowBlur = 22; ctx.strokeStyle = "#ef5b58"; ctx.lineWidth = 18; ctx.strokeRect(12, 12, worldWidth - 24, worldHeight - 24); ctx.shadowBlur = 0; ctx.strokeStyle = "rgba(255,255,255,.72)"; ctx.lineWidth = 2; ctx.setLineDash([12, 12]); ctx.strokeRect(25, 25, worldWidth - 50, worldHeight - 50); ctx.setLineDash([]);
+        bots.forEach((bot, index) => { if (!bot.alive || bot.x < camera.x - 140 || bot.x > camera.x + w + 140 || bot.y < camera.y - 140 || bot.y > camera.y + h + 140) return; const colors = botPalette[index % botPalette.length]; drawSnake(ctx, bot.body, colors[0], colors[1], index % 3 === 0 ? "bands" : "dots", 12 + index % 4); if (index < 10) drawBotLabel(ctx, bot.x, bot.y, `${String(index + 1).padStart(2, "0")} • ${bot.name}`); });
+        drawSnake(ctx, player.body, style?.primary ?? "#ef4f4f", style?.secondary ?? "#fff4d1", style?.pattern); ctx.font = "900 11px Tahoma, Arial"; ctx.textAlign = "center"; ctx.fillStyle = "#ffe176"; ctx.fillText("أنت", player.x, player.y - 24);
       } else {
+        ctx.strokeStyle = "rgba(255,255,255,.05)"; ctx.lineWidth = 1; for (let x = 0; x < w; x += 32) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); } for (let y = 0; y < h; y += 32) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+        for (let i = 0; i < 34; i++) { const px = (i * 83 + 31) % Math.max(w, 1); const py = (i * 47 + 53) % Math.max(h, 1); ctx.beginPath(); ctx.fillStyle = i % 3 ? "#70dfb7" : "#ffd858"; ctx.arc(px, py, 2.5 + i % 2, 0, Math.PI * 2); ctx.fill(); }
         [{ c: "#ef4f4f", a: "#fff4d1", y: .35, p: 0 }, { c: "#4fc798", a: "#fff4d1", y: .62, p: 1.7 }, { c: "#ffd858", a: "#16385f", y: .82, p: 3.2 }].forEach((s, n) => { const pts: Array<[number, number]> = []; for (let i = 0; i < 14; i++) pts.push([w * (.12 + n * .25) + i * 8 + Math.sin(frame / 48 + s.p) * 18, h * s.y + Math.sin(i * .46 + frame / 24 + s.p) * 18]); drawSnake(ctx, pts, s.c, s.a); });
       }
       frame++; animation = requestAnimationFrame(draw);
     };
     draw(); return () => cancelAnimationFrame(animation);
-  }, [interactive, style]);
+  }, [interactive, onStats, style]);
   const aim = (event: React.PointerEvent<HTMLCanvasElement>) => { const r = event.currentTarget.getBoundingClientRect(); target.current = { x: event.clientX - r.left, y: event.clientY - r.top }; };
-  return <canvas ref={canvasRef} onPointerMove={aim} onPointerDown={aim} className="arena-canvas" aria-label={interactive ? "حلبة سنيكس التفاعلية" : "معاينة حلبة سنيكس"} />;
+  return <canvas ref={canvasRef} onPointerMove={aim} onPointerDown={aim} className="arena-canvas" aria-label={interactive ? "حلبة سنيكس كبيرة بكاميرا تتبع" : "معاينة حلبة سنيكس"} />;
 }
 
 function Header({ active, balance }: { active: View; balance: number }) {
@@ -124,8 +158,9 @@ function Lobby() {
 }
 
 function GameView() {
-  const [seconds, setSeconds] = useState(300); const [queued, setQueued] = useState(true); const [expanded, setExpanded] = useState(false); const stageRef = useRef<HTMLDivElement>(null);
+  const [seconds, setSeconds] = useState(300); const [queued, setQueued] = useState(true); const [expanded, setExpanded] = useState(false); const [tierValue, setTierValue] = useState(.1); const [arenaStats, setArenaStats] = useState<ArenaStats>({ kills: 0, players: 30, mass: 42 }); const stageRef = useRef<HTMLDivElement>(null);
   useEffect(() => { const queue = window.setTimeout(() => setQueued(false), 1200); return () => clearTimeout(queue); }, []);
+  useEffect(() => { const selected = Number(new URLSearchParams(window.location.search).get("tier") ?? ".10"); if ([.01, .1, 1].includes(selected)) setTierValue(selected); }, []);
   useEffect(() => { if (queued) return; const timer = window.setInterval(() => setSeconds(s => Math.max(0, s - 1)), 1000); return () => clearInterval(timer); }, [queued]);
   useEffect(() => { const sync = () => setExpanded(Boolean(document.fullscreenElement)); document.addEventListener("fullscreenchange", sync); return () => document.removeEventListener("fullscreenchange", sync); }, []);
   const toggleFullscreen = async () => {
@@ -133,20 +168,21 @@ function GameView() {
     try { await stageRef.current?.requestFullscreen(); setExpanded(true); } catch { setExpanded(true); }
   };
   const time = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+  const earnings = arenaStats.kills * tierValue / 2; const earningsText = earnings > 0 && earnings < .01 ? earnings.toFixed(3) : earnings.toFixed(2); const rank = Math.max(1, 6 - arenaStats.kills);
   return <section className="play-experience"><div className={`game-stage ${expanded ? "is-expanded" : ""}`} ref={stageRef}>
     <div className="match-commandbar">
       <div className="match-brand"><span className="brand-mark">S</span><div><b>SNAKES ARENA</b><small><span className="live-dot" /> مباراة مباشرة</small></div></div>
-      <div className="command-metrics"><span><Users /> <bdi>30 / 30</bdi><small>اللاعبون</small></span><span><Wifi /> <bdi>28 ms</bdi><small>الاتصال</small></span><span><Zap /> <bdi>$0.10</bdi><small>الجولة</small></span></div>
+      <div className="command-metrics"><span><Users /> <bdi>{arenaStats.players} / 30</bdi><small>اللاعبون</small></span><span><Wifi /> <bdi>28 ms</bdi><small>الاتصال</small></span><span><Zap /> <bdi>${tierValue.toFixed(2)}</bdi><small>الجولة</small></span></div>
       <button className="fullscreen-button" onClick={() => void toggleFullscreen()} aria-label={expanded ? "الخروج من ملء الشاشة" : "ملء الشاشة"}>{expanded ? <Minimize2 /> : <Maximize2 />}<span>{expanded ? "تصغير" : "ملء الشاشة"}</span></button>
     </div>
     <div className="match-leaders" aria-label="أفضل خمسة لاعبين"><span className="leaders-title"><Trophy /> الصدارة</span>{leaders.map(([name, amount], index) => <div key={name} className={index === 0 ? "leader-first" : ""}><b>{index + 1}</b><span>{name}</span><bdi>{amount}</bdi></div>)}</div>
-    <div className="arena-card live-game"><div className="arena-head"><div><span className="live-dot" /> {queued ? "تجهيز الغرفة" : "الجولة جارية"}</div><strong>{time}</strong><span><Bot /> {queued ? "إضافة اللاعبين الآليين…" : "29 BOT + أنت"}</span></div><Arena interactive />
-      <div className="combat-hud"><div><Crosshair /><span>الإقصاءات</span><b>2</b></div><div><Coins /><span>الأرباح</span><bdi>$0.02</bdi></div><div><Crown /><span>الترتيب</span><b>#6</b></div></div>
-      <div className="control-tip"><span className="control-orbit"><Crosshair /></span><span><b>التحكم</b> حرّك المؤشر أو إصبعك لتغيير الاتجاه</span></div>
-      <div className="kill-feed"><span><b>BOT • برق</b> أقصى BOT • موج</span><span><b>BOT • شبح</b> اصطدم بالجدار</span></div>
+    <div className="arena-card live-game"><div className="arena-head"><div><span className="live-dot" /> {queued ? "تجهيز الغرفة" : "الجولة جارية"}</div><strong>{time}</strong><span><Bot /> {queued ? "إضافة اللاعبين الآليين…" : `${arenaStats.players - 1} BOT + أنت`}</span></div><Arena interactive onStats={setArenaStats} />
+      <div className="combat-hud"><div><Crosshair /><span>الإقصاءات</span><b>{arenaStats.kills}</b></div><div><Coins /><span>الأرباح</span><bdi>${earningsText}</bdi></div><div><Crown /><span>الترتيب</span><b>#{rank}</b></div><div><Activity /><span>الطول</span><b>{arenaStats.mass}</b></div></div>
+      <div className="control-tip"><span className="control-orbit"><Crosshair /></span><span><b>التحكم</b> المس أي BOT لالتهامه، ثم اجمع كتلته لتكبر</span></div>
+      <div className="kill-feed"><span><b>التهم البوتات</b> بلمس أجسامها</span><span><b>اجمع الكتل</b> لزيادة طول ثعبانك</span></div>
       {queued && <div className="queue-cover"><div className="spinner-ring" /><h1>اكتملت الغرفة</h1><p>أنت و29 لاعباً آلياً — تبدأ الجولة الآن</p></div>}
     </div>
-    <div className="match-footer"><span><ShieldCheck /> الخادم هو المصدر المعتمد للنتائج</span><span className="demo-pill">رصيد تجريبي — بلا قيمة نقدية</span><a href="/">مغادرة الجولة</a></div>
+    <div className="match-footer"><span><ShieldCheck /> الخادم هو المصدر المعتمد للنتائج • عالم 4200 × 2800</span><span className="demo-pill">رصيد تجريبي — بلا قيمة نقدية</span><a href="/">مغادرة الجولة</a></div>
   </div></section>;
 }
 
