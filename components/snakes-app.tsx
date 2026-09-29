@@ -18,7 +18,7 @@ import { apiRequest } from "@/lib/api";
 
 type View = "lobby" | "game" | "wallet" | "roulette" | "snake" | "referrals" | "settings" | "store" | "admin" | "login" | "register";
 type SnakeStyle = { primary: string; secondary: string; pattern: "dots" | "bands" | "stars" };
-type ArenaStats = { kills: number; players: number; mass: number };
+type ArenaStats = { kills: number; players: number; mass: number; value: number; dead: boolean };
 
 const tiers = [
   { cents: 1, value: "$0.01", label: "للمبتدئين", tone: "mint", locked: false },
@@ -43,84 +43,92 @@ const navItems: Array<{ view: View; href: string; label: string; icon: typeof Ho
 
 function drawSnake(ctx: CanvasRenderingContext2D, points: Array<[number, number]>, primary: string, secondary: string, pattern = "dots", width = 22) {
   if (points.length < 2) return;
-  ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = primary; ctx.lineWidth = width;
-  ctx.beginPath(); points.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.stroke();
+  const path = () => { ctx.beginPath(); points.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); };
+  ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = "rgba(0,0,0,.34)"; ctx.lineWidth = width + 7; path(); ctx.stroke();
+  ctx.shadowColor = primary; ctx.shadowBlur = 10; ctx.strokeStyle = primary; ctx.lineWidth = width; path(); ctx.stroke(); ctx.shadowBlur = 0;
   ctx.strokeStyle = secondary; ctx.lineWidth = Math.max(3, width * .23); ctx.setLineDash(pattern === "bands" ? [8, 12] : pattern === "stars" ? [2, 18] : [3, 14]); ctx.stroke(); ctx.setLineDash([]);
-  const [hx, hy] = points.at(-1)!; const head = width * .68; ctx.fillStyle = primary; ctx.beginPath(); ctx.arc(hx + width * .18, hy, head, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = "white"; ctx.beginPath(); ctx.arc(hx + width * .43, hy - width * .2, Math.max(3, width * .2), 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = "#102d4b"; ctx.beginPath(); ctx.arc(hx + width * .46, hy - width * .2, Math.max(1.4, width * .08), 0, Math.PI * 2); ctx.fill();
+  const [hx, hy] = points.at(-1)!; const [px, py] = points.at(-2)!; const angle = Math.atan2(hy - py, hx - px); const dx = Math.cos(angle); const dy = Math.sin(angle); const nx = -dy; const ny = dx; const headX = hx + dx * width * .12; const headY = hy + dy * width * .12; const head = width * .7;
+  ctx.fillStyle = primary; ctx.beginPath(); ctx.arc(headX, headY, head, 0, Math.PI * 2); ctx.fill();
+  [-1, 1].forEach(side => { const eyeX = headX + dx * width * .42 + nx * width * .25 * side; const eyeY = headY + dy * width * .42 + ny * width * .25 * side; ctx.fillStyle = "white"; ctx.beginPath(); ctx.arc(eyeX, eyeY, Math.max(3.3, width * .2), 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = "#071a2c"; ctx.beginPath(); ctx.arc(eyeX + dx * width * .06, eyeY + dy * width * .06, Math.max(1.6, width * .085), 0, Math.PI * 2); ctx.fill(); });
 }
 
-function drawBotLabel(ctx: CanvasRenderingContext2D, x: number, y: number, name: string) {
-  const label = `BOT • ${name}`; ctx.font = "700 10px Tahoma, Arial"; const width = ctx.measureText(label).width + 13;
-  ctx.fillStyle = "rgba(3,17,32,.76)"; ctx.beginPath(); ctx.roundRect(x - width / 2, y - 29, width, 18, 7); ctx.fill();
-  ctx.fillStyle = "rgba(255,255,255,.92)"; ctx.textAlign = "center"; ctx.fillText(label, x, y - 16);
+function drawValueTag(ctx: CanvasRenderingContext2D, x: number, y: number, value: number, caption: string, snakeWidth: number) {
+  const label = `$${value.toFixed(2)}`; ctx.font = "900 12px Arial"; const width = Math.max(54, ctx.measureText(label).width + 18); const top = y - snakeWidth * 1.25 - 34;
+  ctx.shadowColor = "rgba(0,0,0,.5)"; ctx.shadowBlur = 8; ctx.fillStyle = "rgba(3,10,18,.9)"; ctx.strokeStyle = "#f3cf54"; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(x - width / 2, top, width, 25, 7); ctx.fill(); ctx.stroke(); ctx.shadowBlur = 0;
+  ctx.fillStyle = "#ffe66f"; ctx.textAlign = "center"; ctx.fillText(label, x, top + 17);
+  ctx.font = "800 8px Tahoma, Arial"; ctx.fillStyle = "rgba(255,255,255,.72)"; ctx.fillText(caption, x, top - 5);
 }
 
-function Arena({ interactive = false, style, onStats }: { interactive?: boolean; style?: SnakeStyle; onStats?: React.Dispatch<React.SetStateAction<ArenaStats>> }) {
+function Arena({ interactive = false, style, entryValue = .1, onStats }: { interactive?: boolean; style?: SnakeStyle; entryValue?: number; onStats?: React.Dispatch<React.SetStateAction<ArenaStats>> }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const target = useRef({ x: 430, y: 260 });
+  const target = useRef({ x: 1000, y: 260, active: false });
   useEffect(() => {
     const canvas = canvasRef.current; const ctx = canvas?.getContext("2d"); if (!canvas || !ctx) return;
     const worldWidth = 4200; const worldHeight = 2800;
-    let frame = 0; let animation = 0; let kills = 0; let collectedMass = 0; let bodyLimit = 42; let lastReport = "";
+    const zoom = 1.34;
+    let frame = 0; let animation = 0; let kills = 0; let collectedMass = 0; let bodyLimit = 54; let playerValue = entryValue; let playerDead = false; let lastReport = "";
     const player = { x: worldWidth / 2, y: worldHeight / 2, angle: 0, body: [] as Array<[number, number]>, initialized: false };
     const camera = { x: 0, y: 0, initialized: false };
     const massPellets: Array<{ x: number; y: number; color: string; size: number }> = [];
     const bots = botNames.map((name, index) => ({
-      name, x: 0, y: 0, angle: (index * 1.87) % (Math.PI * 2), speed: 1.05 + (index % 5) * .11,
-      turn: .004 + (index % 4) * .0015, body: [] as Array<[number, number]>, initialized: false, alive: true,
+      name, x: 0, y: 0, angle: (index * 1.87) % (Math.PI * 2), speed: .72 + (index % 5) * .08,
+      turn: .0034 + (index % 4) * .0012, body: [] as Array<[number, number]>, initialized: false, alive: true,
+      bodyLimit: 28 + index % 16, value: .05 + (index % 5) * .05,
     }));
-    const reportStats = () => { const key = `${kills}:${collectedMass}:${bodyLimit}`; if (key === lastReport) return; lastReport = key; onStats?.({ kills, players: 30 - kills, mass: bodyLimit }); };
+    const reportStats = () => { const players = bots.filter(bot => bot.alive).length + (playerDead ? 0 : 1); const key = `${kills}:${collectedMass}:${bodyLimit}:${playerValue}:${playerDead}:${players}`; if (key === lastReport) return; lastReport = key; onStats?.({ kills, players, mass: bodyLimit, value: playerValue, dead: playerDead }); };
+    const dropBot = (botIndex: number) => { const bot = bots[botIndex]; if (!bot.alive) return; bot.alive = false; const colors = botPalette[botIndex % botPalette.length]; bot.body.forEach((segment, segmentIndex) => { if (segmentIndex % 2 !== 0) return; massPellets.push({ x: segment[0] + ((segmentIndex * 7) % 9 - 4), y: segment[1] + ((segmentIndex * 11) % 9 - 4), color: colors[0], size: 5 + segmentIndex % 4 }); }); };
     const draw = () => {
       const rect = canvas.getBoundingClientRect(); const dpr = Math.min(window.devicePixelRatio || 1, 2); const w = rect.width; const h = rect.height;
       if (canvas.width !== Math.floor(w * dpr) || canvas.height !== Math.floor(h * dpr)) { canvas.width = Math.floor(w * dpr); canvas.height = Math.floor(h * dpr); }
+      if (!target.current.active) target.current = { x: w * 1.3, y: h * .5, active: false };
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0); const g = ctx.createLinearGradient(0, 0, w, h); g.addColorStop(0, "#173e68"); g.addColorStop(1, "#071d34"); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
       if (interactive) {
+        const viewW = w / zoom; const viewH = h / zoom;
         bots.forEach((bot, index) => {
           if (!bot.alive) return;
           if (!bot.initialized) {
             const columns = 7; const column = index % columns; const row = Math.floor(index / columns);
             bot.x = worldWidth / 2 + (column - 3) * 175 + ((index * 7) % 31 - 15); bot.y = worldHeight / 2 + (row - 2) * 150 + ((index * 11) % 29 - 14);
             const startDx = bot.x - worldWidth / 2; const startDy = bot.y - worldHeight / 2; const startDistance = Math.hypot(startDx, startDy); if (startDistance < 315) { const startAngle = startDistance < 1 ? index * .7 : Math.atan2(startDy, startDx); bot.x = worldWidth / 2 + Math.cos(startAngle) * 325; bot.y = worldHeight / 2 + Math.sin(startAngle) * 325; }
-            if (index === 17) { bot.x = worldWidth / 2 + 300; bot.y = worldHeight / 2; bot.angle = Math.PI; }
-            const initialLength = 15 + index % 12; for (let segment = initialLength; segment >= 0; segment--) bot.body.push([bot.x - Math.cos(bot.angle) * segment * 4.5, bot.y - Math.sin(bot.angle) * segment * 4.5]);
+            if (index === 17) { bot.x = worldWidth / 2 + 25; bot.y = worldHeight / 2 - 70; bot.angle = Math.PI / 2; }
+            const initialLength = bot.bodyLimit; for (let segment = initialLength; segment >= 0; segment--) bot.body.push([bot.x - Math.cos(bot.angle) * segment * 4.5, bot.y - Math.sin(bot.angle) * segment * 4.5]);
             bot.initialized = true;
           }
           bot.angle += Math.sin(frame / (70 + index % 9) + index * .74) * bot.turn;
+          if (frame > 600 && (index === 5 || index === 21) && player.body.length > 24 && !playerDead) { const targetSegment = player.body[Math.max(0, player.body.length - 24 - index % 11)]; const trailAngle = Math.atan2(targetSegment[1] - bot.y, targetSegment[0] - bot.x); const trailDiff = ((trailAngle - bot.angle + Math.PI * 3) % (Math.PI * 2)) - Math.PI; bot.angle += Math.max(-.01, Math.min(.01, trailDiff)); }
           const margin = 42; if (bot.x < margin || bot.x > worldWidth - margin) bot.angle = Math.PI - bot.angle; if (bot.y < margin || bot.y > worldHeight - margin) bot.angle = -bot.angle;
           bot.x = Math.max(margin, Math.min(worldWidth - margin, bot.x + Math.cos(bot.angle) * bot.speed)); bot.y = Math.max(margin, Math.min(worldHeight - margin, bot.y + Math.sin(bot.angle) * bot.speed));
-          bot.body.push([bot.x, bot.y]); if (bot.body.length > 15 + index % 12) bot.body.shift();
+          bot.body.push([bot.x, bot.y]); if (bot.body.length > bot.bodyLimit) bot.body.shift();
         });
-        if (!player.initialized) { for (let segment = 38; segment >= 0; segment--) player.body.push([player.x - segment * 5, player.y]); player.initialized = true; }
-        if (!camera.initialized) { camera.x = Math.max(0, player.x - w / 2); camera.y = Math.max(0, player.y - h / 2); target.current = { x: w * .72, y: h * .5 }; camera.initialized = true; }
-        const screenX = player.x - camera.x; const screenY = player.y - camera.y; const wanted = Math.atan2(target.current.y - screenY, target.current.x - screenX); let diff = ((wanted - player.angle + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
-        player.angle += Math.max(-.075, Math.min(.075, diff)); player.x = Math.max(30, Math.min(worldWidth - 30, player.x + Math.cos(player.angle) * 2.55)); player.y = Math.max(30, Math.min(worldHeight - 30, player.y + Math.sin(player.angle) * 2.55)); player.body.push([player.x, player.y]); if (player.body.length > bodyLimit) player.body.shift();
+        if (!player.initialized) { for (let segment = bodyLimit; segment >= 0; segment--) player.body.push([player.x - segment * 4.7, player.y]); player.initialized = true; reportStats(); }
+        if (!camera.initialized) { camera.x = Math.max(0, player.x - viewW / 2); camera.y = Math.max(0, player.y - viewH / 2); camera.initialized = true; }
+        if (!playerDead) { const screenX = (player.x - camera.x) * zoom; const screenY = (player.y - camera.y) * zoom; const wanted = Math.atan2(target.current.y - screenY, target.current.x - screenX); const diff = ((wanted - player.angle + Math.PI * 3) % (Math.PI * 2)) - Math.PI; player.angle += Math.max(-.045, Math.min(.045, diff)); player.x += Math.cos(player.angle) * 1.78; player.y += Math.sin(player.angle) * 1.78; player.body.push([player.x, player.y]); if (player.body.length > bodyLimit) player.body.shift(); }
 
-        bots.forEach((bot, index) => {
+        if (frame > 45) bots.forEach((bot, index) => {
           if (!bot.alive || !bot.initialized) return;
-          const touched = bot.body.some((segment, segmentIndex) => segmentIndex % 2 === 0 && Math.hypot(player.x - segment[0], player.y - segment[1]) < 25);
-          if (!touched) return;
-          bot.alive = false; kills += 1; const colors = botPalette[index % botPalette.length];
-          bot.body.forEach((segment, segmentIndex) => { if (segmentIndex % 2 !== 0) return; massPellets.push({ x: segment[0] + ((segmentIndex * 7) % 9 - 4), y: segment[1] + ((segmentIndex * 11) % 9 - 4), color: colors[0], size: 5 + segmentIndex % 4 }); });
-          reportStats();
+          const playerWidth = 28 + Math.min(kills * 3, 14); const botWidth = 18 + index % 5; const playerTrail = player.body.slice(0, Math.max(0, player.body.length - 11));
+          const hitPlayerBody = !playerDead && (index === 17 || frame > 600) && playerTrail.some((segment, segmentIndex) => segmentIndex % 2 === 0 && Math.hypot(bot.x - segment[0], bot.y - segment[1]) < (playerWidth + botWidth) * .48);
+          if (hitPlayerBody) { dropBot(index); kills += 1; playerValue = Math.round((playerValue + .05) * 100) / 100; bodyLimit = Math.min(180, bodyLimit + 12); reportStats(); return; }
+          const ownerIndex = frame > 1800 && index % 13 === 0 ? bots.findIndex((other, otherIndex) => otherIndex !== index && other.alive && other.body.slice(0, Math.max(0, other.body.length - 9)).some((segment, segmentIndex) => segmentIndex % 2 === 0 && Math.hypot(bot.x - segment[0], bot.y - segment[1]) < (botWidth + 18 + otherIndex % 5) * .46)) : -1;
+          if (ownerIndex >= 0) { dropBot(index); bots[ownerIndex].value = Math.round((bots[ownerIndex].value + .05) * 100) / 100; bots[ownerIndex].bodyLimit = Math.min(70, bots[ownerIndex].bodyLimit + 5); reportStats(); }
         });
-        for (let pelletIndex = massPellets.length - 1; pelletIndex >= 0; pelletIndex--) { const pellet = massPellets[pelletIndex]; if (Math.hypot(player.x - pellet.x, player.y - pellet.y) >= 30) continue; massPellets.splice(pelletIndex, 1); collectedMass += 1; bodyLimit = Math.min(150, bodyLimit + 2); reportStats(); }
+        if (!playerDead && frame > 1200) { const playerWidth = 28 + Math.min(kills * 3, 14); const crashedIntoBot = bots.some((bot, index) => bot.alive && bot.body.slice(0, Math.max(0, bot.body.length - 9)).some((segment, segmentIndex) => segmentIndex % 2 === 0 && Math.hypot(player.x - segment[0], player.y - segment[1]) < (playerWidth + 18 + index % 5) * .46)); const hitWall = player.x < 34 || player.x > worldWidth - 34 || player.y < 34 || player.y > worldHeight - 34; if (crashedIntoBot || hitWall) { playerDead = true; reportStats(); } }
+        if (!playerDead) for (let pelletIndex = massPellets.length - 1; pelletIndex >= 0; pelletIndex--) { const pellet = massPellets[pelletIndex]; if (Math.hypot(player.x - pellet.x, player.y - pellet.y) >= 30) continue; massPellets.splice(pelletIndex, 1); collectedMass += 1; bodyLimit = Math.min(180, bodyLimit + 1); reportStats(); }
 
         const edgeX = Math.min(220, w * .3); const edgeY = Math.min(175, h * .28); const nextScreenX = player.x - camera.x; const nextScreenY = player.y - camera.y; let desiredX = camera.x; let desiredY = camera.y;
-        if (nextScreenX < edgeX) desiredX = player.x - edgeX; else if (nextScreenX > w - edgeX) desiredX = player.x - (w - edgeX);
-        if (nextScreenY < edgeY) desiredY = player.y - edgeY; else if (nextScreenY > h - edgeY) desiredY = player.y - (h - edgeY);
-        desiredX = Math.max(0, Math.min(Math.max(0, worldWidth - w), desiredX)); desiredY = Math.max(0, Math.min(Math.max(0, worldHeight - h), desiredY)); camera.x += (desiredX - camera.x) * .085; camera.y += (desiredY - camera.y) * .085;
+        if (nextScreenX * zoom < edgeX) desiredX = player.x - edgeX / zoom; else if (nextScreenX * zoom > w - edgeX) desiredX = player.x - (w - edgeX) / zoom;
+        if (nextScreenY * zoom < edgeY) desiredY = player.y - edgeY / zoom; else if (nextScreenY * zoom > h - edgeY) desiredY = player.y - (h - edgeY) / zoom;
+        desiredX = Math.max(0, Math.min(Math.max(0, worldWidth - viewW), desiredX)); desiredY = Math.max(0, Math.min(Math.max(0, worldHeight - viewH), desiredY)); camera.x += (desiredX - camera.x) * .09; camera.y += (desiredY - camera.y) * .09;
 
-        ctx.setTransform(dpr, 0, 0, dpr, -camera.x * dpr, -camera.y * dpr);
+        ctx.setTransform(dpr * zoom, 0, 0, dpr * zoom, -camera.x * dpr * zoom, -camera.y * dpr * zoom);
         const grid = 64; ctx.strokeStyle = "rgba(255,255,255,.055)"; ctx.lineWidth = 1;
-        for (let x = Math.floor(camera.x / grid) * grid; x <= camera.x + w + grid; x += grid) { ctx.beginPath(); ctx.moveTo(x, camera.y); ctx.lineTo(x, camera.y + h); ctx.stroke(); }
-        for (let y = Math.floor(camera.y / grid) * grid; y <= camera.y + h + grid; y += grid) { ctx.beginPath(); ctx.moveTo(camera.x, y); ctx.lineTo(camera.x + w, y); ctx.stroke(); }
-        for (let i = 0; i < 210; i++) { const px = 80 + ((i * 197 + 31) % (worldWidth - 160)); const py = 80 + ((i * 139 + 53) % (worldHeight - 160)); if (px < camera.x - 10 || px > camera.x + w + 10 || py < camera.y - 10 || py > camera.y + h + 10) continue; ctx.beginPath(); ctx.fillStyle = i % 3 ? "#70dfb7" : "#ffd858"; ctx.arc(px, py, 2.5 + i % 2, 0, Math.PI * 2); ctx.fill(); }
-        massPellets.forEach(pellet => { if (pellet.x < camera.x - 15 || pellet.x > camera.x + w + 15 || pellet.y < camera.y - 15 || pellet.y > camera.y + h + 15) return; ctx.shadowColor = pellet.color; ctx.shadowBlur = 14; ctx.fillStyle = pellet.color; ctx.beginPath(); ctx.arc(pellet.x, pellet.y, pellet.size, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0; ctx.fillStyle = "rgba(255,255,255,.85)"; ctx.beginPath(); ctx.arc(pellet.x - 1.5, pellet.y - 1.5, Math.max(1.3, pellet.size * .27), 0, Math.PI * 2); ctx.fill(); });
+        for (let x = Math.floor(camera.x / grid) * grid; x <= camera.x + viewW + grid; x += grid) { ctx.beginPath(); ctx.moveTo(x, camera.y); ctx.lineTo(x, camera.y + viewH); ctx.stroke(); }
+        for (let y = Math.floor(camera.y / grid) * grid; y <= camera.y + viewH + grid; y += grid) { ctx.beginPath(); ctx.moveTo(camera.x, y); ctx.lineTo(camera.x + viewW, y); ctx.stroke(); }
+        for (let i = 0; i < 210; i++) { const px = 80 + ((i * 197 + 31) % (worldWidth - 160)); const py = 80 + ((i * 139 + 53) % (worldHeight - 160)); if (px < camera.x - 10 || px > camera.x + viewW + 10 || py < camera.y - 10 || py > camera.y + viewH + 10) continue; ctx.shadowColor = i % 3 ? "#70dfb7" : "#ffd858"; ctx.shadowBlur = 8; ctx.beginPath(); ctx.fillStyle = i % 3 ? "#70dfb7" : "#ffd858"; ctx.arc(px, py, 2.5 + i % 2, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0; }
+        massPellets.forEach(pellet => { if (pellet.x < camera.x - 15 || pellet.x > camera.x + viewW + 15 || pellet.y < camera.y - 15 || pellet.y > camera.y + viewH + 15) return; ctx.shadowColor = pellet.color; ctx.shadowBlur = 14; ctx.fillStyle = pellet.color; ctx.beginPath(); ctx.arc(pellet.x, pellet.y, pellet.size, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0; ctx.fillStyle = "rgba(255,255,255,.85)"; ctx.beginPath(); ctx.arc(pellet.x - 1.5, pellet.y - 1.5, Math.max(1.3, pellet.size * .27), 0, Math.PI * 2); ctx.fill(); });
         ctx.shadowColor = "rgba(239,79,79,.82)"; ctx.shadowBlur = 22; ctx.strokeStyle = "#ef5b58"; ctx.lineWidth = 18; ctx.strokeRect(12, 12, worldWidth - 24, worldHeight - 24); ctx.shadowBlur = 0; ctx.strokeStyle = "rgba(255,255,255,.72)"; ctx.lineWidth = 2; ctx.setLineDash([12, 12]); ctx.strokeRect(25, 25, worldWidth - 50, worldHeight - 50); ctx.setLineDash([]);
-        bots.forEach((bot, index) => { if (!bot.alive || bot.x < camera.x - 140 || bot.x > camera.x + w + 140 || bot.y < camera.y - 140 || bot.y > camera.y + h + 140) return; const colors = botPalette[index % botPalette.length]; drawSnake(ctx, bot.body, colors[0], colors[1], index % 3 === 0 ? "bands" : "dots", 12 + index % 4); if (index < 10) drawBotLabel(ctx, bot.x, bot.y, `${String(index + 1).padStart(2, "0")} • ${bot.name}`); });
-        drawSnake(ctx, player.body, style?.primary ?? "#ef4f4f", style?.secondary ?? "#fff4d1", style?.pattern); ctx.font = "900 11px Tahoma, Arial"; ctx.textAlign = "center"; ctx.fillStyle = "#ffe176"; ctx.fillText("أنت", player.x, player.y - 24);
+        bots.forEach((bot, index) => { if (!bot.alive || bot.x < camera.x - 180 || bot.x > camera.x + viewW + 180 || bot.y < camera.y - 180 || bot.y > camera.y + viewH + 180) return; const colors = botPalette[index % botPalette.length]; const botWidth = 18 + index % 5; drawSnake(ctx, bot.body, colors[0], colors[1], index % 3 === 0 ? "bands" : "dots", botWidth); drawValueTag(ctx, bot.x, bot.y, bot.value, `BOT ${String(index + 1).padStart(2, "0")}`, botWidth); });
+        const playerWidth = 28 + Math.min(kills * 3, 14); drawSnake(ctx, player.body, style?.primary ?? "#ef4f4f", style?.secondary ?? "#fff4d1", style?.pattern, playerWidth); drawValueTag(ctx, player.x, player.y, playerValue, "أنت", playerWidth);
       } else {
         ctx.strokeStyle = "rgba(255,255,255,.05)"; ctx.lineWidth = 1; for (let x = 0; x < w; x += 32) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); } for (let y = 0; y < h; y += 32) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
         for (let i = 0; i < 34; i++) { const px = (i * 83 + 31) % Math.max(w, 1); const py = (i * 47 + 53) % Math.max(h, 1); ctx.beginPath(); ctx.fillStyle = i % 3 ? "#70dfb7" : "#ffd858"; ctx.arc(px, py, 2.5 + i % 2, 0, Math.PI * 2); ctx.fill(); }
@@ -129,9 +137,9 @@ function Arena({ interactive = false, style, onStats }: { interactive?: boolean;
       frame++; animation = requestAnimationFrame(draw);
     };
     draw(); return () => cancelAnimationFrame(animation);
-  }, [interactive, onStats, style]);
-  const aim = (event: React.PointerEvent<HTMLCanvasElement>) => { const r = event.currentTarget.getBoundingClientRect(); target.current = { x: event.clientX - r.left, y: event.clientY - r.top }; };
-  return <canvas ref={canvasRef} onPointerMove={aim} onPointerDown={aim} className="arena-canvas" aria-label={interactive ? "حلبة سنيكس كبيرة بكاميرا تتبع" : "معاينة حلبة سنيكس"} />;
+  }, [entryValue, interactive, onStats, style]);
+  const aim = (event: React.PointerEvent<HTMLCanvasElement>) => { const r = event.currentTarget.getBoundingClientRect(); target.current = { x: event.clientX - r.left, y: event.clientY - r.top, active: true }; };
+  return <canvas ref={canvasRef} onPointerMove={aim} onPointerDown={aim} onPointerLeave={() => { target.current.active = false; }} className="arena-canvas" aria-label={interactive ? "حلبة سنيكس كبيرة بكاميرا تتبع" : "معاينة حلبة سنيكس"} />;
 }
 
 function Header({ active, balance }: { active: View; balance: number }) {
@@ -158,7 +166,7 @@ function Lobby() {
 }
 
 function GameView() {
-  const [seconds, setSeconds] = useState(300); const [queued, setQueued] = useState(true); const [expanded, setExpanded] = useState(false); const [tierValue, setTierValue] = useState(.1); const [arenaStats, setArenaStats] = useState<ArenaStats>({ kills: 0, players: 30, mass: 42 }); const stageRef = useRef<HTMLDivElement>(null);
+  const [seconds, setSeconds] = useState(300); const [queued, setQueued] = useState(true); const [expanded, setExpanded] = useState(false); const [tierValue, setTierValue] = useState(.1); const [arenaStats, setArenaStats] = useState<ArenaStats>({ kills: 0, players: 30, mass: 54, value: .1, dead: false }); const stageRef = useRef<HTMLDivElement>(null);
   useEffect(() => { const queue = window.setTimeout(() => setQueued(false), 1200); return () => clearTimeout(queue); }, []);
   useEffect(() => { const selected = Number(new URLSearchParams(window.location.search).get("tier") ?? ".10"); if ([.01, .1, 1].includes(selected)) setTierValue(selected); }, []);
   useEffect(() => { if (queued) return; const timer = window.setInterval(() => setSeconds(s => Math.max(0, s - 1)), 1000); return () => clearInterval(timer); }, [queued]);
@@ -176,11 +184,12 @@ function GameView() {
       <button className="fullscreen-button" onClick={() => void toggleFullscreen()} aria-label={expanded ? "الخروج من ملء الشاشة" : "ملء الشاشة"}>{expanded ? <Minimize2 /> : <Maximize2 />}<span>{expanded ? "تصغير" : "ملء الشاشة"}</span></button>
     </div>
     <div className="match-leaders" aria-label="أفضل خمسة لاعبين"><span className="leaders-title"><Trophy /> الصدارة</span>{leaders.map(([name, amount], index) => <div key={name} className={index === 0 ? "leader-first" : ""}><b>{index + 1}</b><span>{name}</span><bdi>{amount}</bdi></div>)}</div>
-    <div className="arena-card live-game"><div className="arena-head"><div><span className="live-dot" /> {queued ? "تجهيز الغرفة" : "الجولة جارية"}</div><strong>{time}</strong><span><Bot /> {queued ? "إضافة اللاعبين الآليين…" : `${arenaStats.players - 1} BOT + أنت`}</span></div><Arena interactive onStats={setArenaStats} />
-      <div className="combat-hud"><div><Crosshair /><span>الإقصاءات</span><b>{arenaStats.kills}</b></div><div><Coins /><span>الأرباح</span><bdi>${earningsText}</bdi></div><div><Crown /><span>الترتيب</span><b>#{rank}</b></div><div><Activity /><span>الطول</span><b>{arenaStats.mass}</b></div></div>
-      <div className="control-tip"><span className="control-orbit"><Crosshair /></span><span><b>التحكم</b> المس أي BOT لالتهامه، ثم اجمع كتلته لتكبر</span></div>
-      <div className="kill-feed"><span><b>التهم البوتات</b> بلمس أجسامها</span><span><b>اجمع الكتل</b> لزيادة طول ثعبانك</span></div>
+    <div className="arena-card live-game"><div className="arena-head"><div><span className="live-dot" /> {queued ? "تجهيز الغرفة" : arenaStats.dead ? "تم إقصاؤك" : "الجولة جارية"}</div><strong>{time}</strong><span><Bot /> {queued ? "إضافة اللاعبين الآليين…" : `${Math.max(0, arenaStats.players - (arenaStats.dead ? 0 : 1))} BOT + ${arenaStats.dead ? "مشاهدة" : "أنت"}`}</span></div><Arena interactive entryValue={tierValue} onStats={setArenaStats} />
+      <div className="combat-hud"><div><Crosshair /><span>الإقصاءات</span><b>{arenaStats.kills}</b></div><div><Coins /><span>الأرباح</span><bdi>${earningsText}</bdi></div><div><Crown /><span>الترتيب</span><b>#{rank}</b></div><div><Activity /><span>القيمة</span><bdi>${arenaStats.value.toFixed(2)}</bdi></div></div>
+      <div className="control-tip"><span className="control-orbit"><Crosshair /></span><span><b>التحكم</b> وجّه رأس الخصم نحو جسمك لإقصائه — وتجنّب أجسام الثعابين</span></div>
+      <div className="kill-feed"><span><b>الإقصاء</b> رأس الخصم يصطدم بجسمك</span><span><b>كل إقصاء</b> +$0.05 وحجم أكبر</span></div>
       {queued && <div className="queue-cover"><div className="spinner-ring" /><h1>اكتملت الغرفة</h1><p>أنت و29 لاعباً آلياً — تبدأ الجولة الآن</p></div>}
+      {!queued && arenaStats.dead && <div className="queue-cover death-cover"><Crosshair /><h1>تم إقصاؤك</h1><p>اصطدم رأس ثعبانك بجسم خصم. حاول الالتفاف حوله في الجولة القادمة.</p><button onClick={() => window.location.reload()}>العب من جديد</button></div>}
     </div>
     <div className="match-footer"><span><ShieldCheck /> الخادم هو المصدر المعتمد للنتائج • عالم 4200 × 2800</span><span className="demo-pill">رصيد تجريبي — بلا قيمة نقدية</span><a href="/">مغادرة الجولة</a></div>
   </div></section>;
