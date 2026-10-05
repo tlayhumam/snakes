@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import NextLink from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -206,6 +206,8 @@ function GameView() {
   const controlsRef = useRef<ArenaControls>({ magnetUntil: 0, speed: false, cameraWide: false, steering: false, steerX: 0, steerY: 0 });
   const [inventory, setInventory] = useState({ magnet: 2, speed: 3, camera: 1 });
   const [activePowers, setActivePowers] = useState({ magnet: false, speed: false, camera: false });
+  const speedInventoryRef = useRef(inventory.speed); const playerDeadRef = useRef(arenaStats.dead);
+  useEffect(() => { speedInventoryRef.current = inventory.speed; playerDeadRef.current = arenaStats.dead; }, [arenaStats.dead, inventory.speed]);
   useEffect(() => { const queue = window.setTimeout(() => setQueued(false), 1200); return () => clearTimeout(queue); }, []);
   useEffect(() => { if (queued) return; const timer = window.setInterval(() => setSeconds(s => Math.max(0, s - 1)), 1000); return () => clearInterval(timer); }, [queued]);
   useEffect(() => { const sync = () => { const active = document.fullscreenElement === arenaRef.current; if (active) { nativeFullscreen.current = true; setExpanded(true); } else if (nativeFullscreen.current) { nativeFullscreen.current = false; setExpanded(false); } }; document.addEventListener("fullscreenchange", sync); return () => document.removeEventListener("fullscreenchange", sync); }, []);
@@ -215,12 +217,23 @@ function GameView() {
     try { await arenaRef.current?.requestFullscreen(); nativeFullscreen.current = document.fullscreenElement === arenaRef.current; } catch { nativeFullscreen.current = false; }
   };
   const activateMagnet = () => { if (!inventory.magnet || activePowers.magnet || arenaStats.dead) return; const magnetUntil = Date.now() + 8000; controlsRef.current.magnetUntil = magnetUntil; setInventory(current => ({ ...current, magnet: current.magnet - 1 })); setActivePowers(current => ({ ...current, magnet: true })); window.setTimeout(() => { if (controlsRef.current.magnetUntil === magnetUntil) setActivePowers(current => ({ ...current, magnet: false })); }, 8000); };
-  const engageSpeed = () => { if (controlsRef.current.speed || !inventory.speed || arenaStats.dead) return; controlsRef.current.speed = true; setInventory(current => ({ ...current, speed: current.speed - 1 })); setActivePowers(current => ({ ...current, speed: true })); };
-  const releaseSpeed = () => { controlsRef.current.speed = false; setActivePowers(current => ({ ...current, speed: false })); };
+  const engageSpeed = useCallback(() => { if (controlsRef.current.speed || !speedInventoryRef.current || playerDeadRef.current) return; controlsRef.current.speed = true; speedInventoryRef.current -= 1; setInventory(current => ({ ...current, speed: Math.max(0, current.speed - 1) })); setActivePowers(current => ({ ...current, speed: true })); }, []);
+  const releaseSpeed = useCallback(() => { controlsRef.current.speed = false; setActivePowers(current => ({ ...current, speed: false })); }, []);
   const startSpeed = (event: React.PointerEvent<HTMLButtonElement>) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); engageSpeed(); };
   const stopSpeed = (event: React.PointerEvent<HTMLButtonElement>) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); releaseSpeed(); };
   const toggleCamera = () => { if (!activePowers.camera && !inventory.camera) return; if (!activePowers.camera) setInventory(current => ({ ...current, camera: current.camera - 1 })); const next = !activePowers.camera; controlsRef.current.cameraWide = next; setActivePowers(current => ({ ...current, camera: next })); };
-  const steerSnake = (x: number, y: number, active: boolean) => { controlsRef.current.steerX = x; controlsRef.current.steerY = y; controlsRef.current.steering = active; };
+  const steerSnake = useCallback((x: number, y: number, active: boolean) => { controlsRef.current.steerX = x; controlsRef.current.steerY = y; controlsRef.current.steering = active; }, []);
+  useEffect(() => {
+    const heldArrows = new Set<string>();
+    const directions: Record<string, [number, number]> = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] };
+    const isTyping = (target: EventTarget | null) => target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
+    const updateSteering = () => { let x = 0; let y = 0; heldArrows.forEach(key => { x += directions[key][0]; y += directions[key][1]; }); const length = Math.hypot(x, y); steerSnake(length ? x / length : 0, length ? y / length : 0, length > 0); };
+    const keyDown = (event: KeyboardEvent) => { if (isTyping(event.target)) return; if (directions[event.key]) { event.preventDefault(); heldArrows.add(event.key); updateSteering(); } if (event.code === "Space") { event.preventDefault(); if (!event.repeat) engageSpeed(); } };
+    const keyUp = (event: KeyboardEvent) => { if (directions[event.key]) { event.preventDefault(); heldArrows.delete(event.key); updateSteering(); } if (event.code === "Space") { event.preventDefault(); releaseSpeed(); } };
+    const releaseControls = () => { heldArrows.clear(); steerSnake(0, 0, false); releaseSpeed(); };
+    window.addEventListener("keydown", keyDown); window.addEventListener("keyup", keyUp); window.addEventListener("blur", releaseControls);
+    return () => { window.removeEventListener("keydown", keyDown); window.removeEventListener("keyup", keyUp); window.removeEventListener("blur", releaseControls); };
+  }, [engageSpeed, releaseSpeed, steerSnake]);
   const time = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
   const rank = Math.max(1, 6 - arenaStats.kills);
   return <section className="play-experience"><div className="game-stage">
@@ -237,7 +250,7 @@ function GameView() {
       {arenaStats.coinDropActive && <div className="coin-alert"><Coins /><div><b>هطول عملات SNK</b><span>30 عملة • تختفي خلال 30 ثانية</span></div></div>}
       <VirtualJoystick onSteer={steerSnake} disabled={queued || arenaStats.dead} />
       <div className="power-dock" aria-label="مزايا الجولة"><button className={activePowers.magnet ? "active" : ""} disabled={!inventory.magnet || arenaStats.dead} onClick={activateMagnet}><Magnet /><span>المغناطيس</span><b>{activePowers.magnet ? "8ث" : inventory.magnet}</b></button><button className={activePowers.speed ? "active speed-active" : ""} disabled={!inventory.speed || arenaStats.dead} onPointerDown={startSpeed} onPointerUp={stopSpeed} onPointerCancel={stopSpeed} onKeyDown={event => { if (event.key === " " || event.key === "Enter") { event.preventDefault(); engageSpeed(); } }} onKeyUp={event => { if (event.key === " " || event.key === "Enter") releaseSpeed(); }} onBlur={releaseSpeed}><Gauge /><span>{activePowers.speed ? "تسارع نشط" : "اضغط مطولاً"}</span><b>{activePowers.speed ? "×1.65" : inventory.speed}</b></button><button className={activePowers.camera ? "active" : ""} disabled={!activePowers.camera && !inventory.camera} onClick={toggleCamera}><Camera /><span>كاميرا واسعة</span><b>{activePowers.camera ? "ON" : inventory.camera}</b></button></div>
-      <div className="control-tip"><span className="control-orbit"><Crosshair /></span><span><b>التحكم</b> اسحب عصا التوجيه • اضغط مطولاً على السرعة للتسارع</span></div>
+      <div className="control-tip"><span className="control-orbit"><Crosshair /></span><span><b>الكمبيوتر</b> الأسهم للتوجيه • اضغط مطولاً على Space للتسارع</span></div>
       <div className="kill-feed"><span><b>الإقصاء</b> يحوّل قيمة الثعبان إلى 8 نجوم</span><span><b>البقاء للنهاية</b> يحفظ نقاط الجولة في إجمالك</span></div>
       {queued && <div className="queue-cover"><div className="spinner-ring" /><h1>اكتملت الغرفة</h1><p>أنت و29 لاعباً آلياً — تبدأ الجولة الآن</p></div>}
       {!queued && arenaStats.dead && <div className="queue-cover death-cover"><Crosshair /><h1>تم إقصاؤك</h1><p>فقدت نقاط الجولة المؤقتة، بينما بقيت عملات SNK التي جمعتها في خانة المخزون.</p><button onClick={() => window.location.reload()}>العب من جديد</button></div>}
