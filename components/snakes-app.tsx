@@ -202,16 +202,17 @@ function Lobby() {
 
 function GameView() {
   const searchParams = useSearchParams(); const selectedTier = Number(searchParams.get("tier") ?? ".10"); const tierValue = [.01, .1, 1].includes(selectedTier) ? selectedTier : .1; const challengeMode = searchParams.get("mode") === "vs";
-  const [seconds, setSeconds] = useState(300); const [queued, setQueued] = useState(true); const [expanded, setExpanded] = useState(false); const [arenaStats, setArenaStats] = useState<ArenaStats>({ kills: 0, players: 30, mass: 54, value: tierValue, dead: false, roundScore: 0, stars: 0, snkCoins: 0, coinDropActive: false }); const stageRef = useRef<HTMLDivElement>(null);
+  const [seconds, setSeconds] = useState(300); const [queued, setQueued] = useState(true); const [expanded, setExpanded] = useState(false); const [arenaStats, setArenaStats] = useState<ArenaStats>({ kills: 0, players: 30, mass: 54, value: tierValue, dead: false, roundScore: 0, stars: 0, snkCoins: 0, coinDropActive: false }); const arenaRef = useRef<HTMLDivElement>(null); const nativeFullscreen = useRef(false);
   const controlsRef = useRef<ArenaControls>({ magnetUntil: 0, speed: false, cameraWide: false, steering: false, steerX: 0, steerY: 0 });
   const [inventory, setInventory] = useState({ magnet: 2, speed: 3, camera: 1 });
   const [activePowers, setActivePowers] = useState({ magnet: false, speed: false, camera: false });
   useEffect(() => { const queue = window.setTimeout(() => setQueued(false), 1200); return () => clearTimeout(queue); }, []);
   useEffect(() => { if (queued) return; const timer = window.setInterval(() => setSeconds(s => Math.max(0, s - 1)), 1000); return () => clearInterval(timer); }, [queued]);
-  useEffect(() => { const sync = () => setExpanded(Boolean(document.fullscreenElement)); document.addEventListener("fullscreenchange", sync); return () => document.removeEventListener("fullscreenchange", sync); }, []);
+  useEffect(() => { const sync = () => { const active = document.fullscreenElement === arenaRef.current; if (active) { nativeFullscreen.current = true; setExpanded(true); } else if (nativeFullscreen.current) { nativeFullscreen.current = false; setExpanded(false); } }; document.addEventListener("fullscreenchange", sync); return () => document.removeEventListener("fullscreenchange", sync); }, []);
   const toggleFullscreen = async () => {
-    if (expanded) { if (document.fullscreenElement) await document.exitFullscreen(); else setExpanded(false); return; }
-    try { await stageRef.current?.requestFullscreen(); setExpanded(true); } catch { setExpanded(true); }
+    if (expanded) { if (document.fullscreenElement === arenaRef.current) await document.exitFullscreen(); nativeFullscreen.current = false; setExpanded(false); return; }
+    setExpanded(true);
+    try { await arenaRef.current?.requestFullscreen(); nativeFullscreen.current = document.fullscreenElement === arenaRef.current; } catch { nativeFullscreen.current = false; }
   };
   const activateMagnet = () => { if (!inventory.magnet || activePowers.magnet || arenaStats.dead) return; const magnetUntil = Date.now() + 8000; controlsRef.current.magnetUntil = magnetUntil; setInventory(current => ({ ...current, magnet: current.magnet - 1 })); setActivePowers(current => ({ ...current, magnet: true })); window.setTimeout(() => { if (controlsRef.current.magnetUntil === magnetUntil) setActivePowers(current => ({ ...current, magnet: false })); }, 8000); };
   const engageSpeed = () => { if (controlsRef.current.speed || !inventory.speed || arenaStats.dead) return; controlsRef.current.speed = true; setInventory(current => ({ ...current, speed: current.speed - 1 })); setActivePowers(current => ({ ...current, speed: true })); };
@@ -222,14 +223,15 @@ function GameView() {
   const steerSnake = (x: number, y: number, active: boolean) => { controlsRef.current.steerX = x; controlsRef.current.steerY = y; controlsRef.current.steering = active; };
   const time = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
   const rank = Math.max(1, 6 - arenaStats.kills);
-  return <section className="play-experience"><div className={`game-stage ${expanded ? "is-expanded" : ""}`} ref={stageRef}>
+  return <section className="play-experience"><div className="game-stage">
     <div className="match-commandbar">
       <div className="match-brand"><span className="brand-mark">S</span><div><b>{challengeMode ? "VS+ CREATOR ARENA" : "SNAKES ARENA"}</b><small><span className="live-dot" /> {challengeMode ? "تحدٍ عالمي مباشر" : "مباراة مباشرة"}</small></div></div>
       <div className="command-metrics"><span><Users /> <bdi>{arenaStats.players} / 30</bdi><small>اللاعبون</small></span><span><Wifi /> <bdi>28 ms</bdi><small>الاتصال</small></span><span><Zap /> <bdi>${tierValue.toFixed(2)}</bdi><small>الجولة</small></span></div>
       <button className="fullscreen-button" onClick={() => void toggleFullscreen()} aria-label={expanded ? "الخروج من ملء الشاشة" : "ملء الشاشة"}>{expanded ? <Minimize2 /> : <Maximize2 />}<span>{expanded ? "تصغير" : "ملء الشاشة"}</span></button>
     </div>
     <div className="match-leaders" aria-label="أفضل خمسة لاعبين"><span className="leaders-title"><Trophy /> الصدارة</span>{leaders.map(([name, amount], index) => <div key={name} className={index === 0 ? "leader-first" : ""}><b>{index + 1}</b><span>{name}</span><bdi>{amount}</bdi></div>)}</div>
-    <div className="arena-card live-game"><div className="arena-head"><div><span className="live-dot" /> {queued ? "تجهيز الغرفة" : arenaStats.dead ? "تم إقصاؤك" : "الجولة جارية"}</div><strong>{time}</strong><span><Bot /> {queued ? "إضافة اللاعبين الآليين…" : `${Math.max(0, arenaStats.players - (arenaStats.dead ? 0 : 1))} BOT + ${arenaStats.dead ? "مشاهدة" : "أنت"}`}</span></div><Arena interactive entryValue={tierValue} onStats={setArenaStats} controls={controlsRef} challengeMode={challengeMode} />
+    <div className={`arena-card live-game ${expanded ? "is-expanded" : ""}`} ref={arenaRef}><div className="arena-head"><div><span className="live-dot" /> {queued ? "تجهيز الغرفة" : arenaStats.dead ? "تم إقصاؤك" : "الجولة جارية"}</div><strong>{time}</strong><span><Bot /> {queued ? "إضافة اللاعبين الآليين…" : `${Math.max(0, arenaStats.players - (arenaStats.dead ? 0 : 1))} BOT + ${arenaStats.dead ? "مشاهدة" : "أنت"}`}</span></div><Arena interactive entryValue={tierValue} onStats={setArenaStats} controls={controlsRef} challengeMode={challengeMode} />
+      {expanded && <button className="arena-exit-fullscreen" onClick={() => void toggleFullscreen()} aria-label="الخروج من ملء الشاشة"><Minimize2 /><span>تصغير</span></button>}
       <div className="combat-hud"><div><Crosshair /><span>الإقصاءات</span><b>{arenaStats.kills}</b></div><div className="risk-score"><Sparkles /><span>نقاط الجولة</span><bdi>SNK {arenaStats.roundScore.toFixed(3)}</bdi></div><div><Crown /><span>الترتيب</span><b>#{rank}</b></div><div><Activity /><span>القيمة</span><bdi>${arenaStats.value.toFixed(3)}</bdi></div></div>
       <div className="inventory-hud"><span><Star /> {arenaStats.stars}<small>نجمة</small></span><span className="coin-slot"><Coins /> {arenaStats.snkCoins}<small>SNK 0.03</small></span></div>
       {arenaStats.coinDropActive && <div className="coin-alert"><Coins /><div><b>هطول عملات SNK</b><span>30 عملة • تختفي خلال 30 ثانية</span></div></div>}
