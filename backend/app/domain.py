@@ -20,6 +20,14 @@ def referral_commission(platform_share_micros: int) -> int:
     return platform_share_micros * 20 // 100
 
 
+def split_star_value(total_micros: int, star_count: int) -> list[int]:
+    """Split a dropped value exactly, without losing remainder micros."""
+    if total_micros < 0 or star_count < 1:
+        raise ValueError("star value and count must be positive")
+    base, remainder = divmod(total_micros, star_count)
+    return [base + (1 if index < remainder else 0) for index in range(star_count)]
+
+
 def display_money(micros: int) -> str:
     value = (Decimal(micros) / MICROS_PER_DOLLAR).quantize(Decimal("0.001"), rounding=ROUND_HALF_UP)
     rendered = format(value, "f").rstrip("0").rstrip(".")

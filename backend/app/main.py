@@ -15,15 +15,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .config import get_settings
 from .database import SessionLocal, get_db
 from .domain import MICROS_PER_CENT, display_money
-from .economy import create_withdrawal, demo_deposit, locked_wallet, make_referral_code, reserve_entry, spin_roulette
+from .economy import STORE_ITEMS, consume_powerup, create_withdrawal, demo_deposit, locked_wallet, make_referral_code, purchase_store_item, reserve_entry, spin_roulette
 from .game import hub
 from .models import (
     AppSetting, AuditEvent, Deposit, LedgerEntry, Participant, ReferralReward,
-    Round, RouletteReward, Session, SnakeProfile, Tier, User, Wallet, Withdrawal,
+    Round, RouletteReward, Session, SnakeProfile, Tier, User, VsChallenge,
+    VsChallengeEntry, Wallet, Withdrawal,
 )
 from .schemas import (
     AdminConfigInput, DepositInput, LoginInput, RegisterInput, SettingsInput,
-    SnakeInput, WithdrawalDecision, WithdrawalInput,
+    ShopPurchaseInput, SnakeInput, VsChallengeInput, VsChallengeJoinInput,
+    WithdrawalDecision, WithdrawalInput,
 )
 from .security import (
     COOKIE_NAME, admin_user, clear_session, create_session, current_user,
@@ -105,7 +107,24 @@ def user_payload(user: User, wallet: Wallet) -> dict:
 
 
 def wallet_payload(wallet: Wallet) -> dict:
-    return {"balance_micros": wallet.balance_micros, "balance": display_money(wallet.balance_micros), "locked_micros": wallet.locked_micros, "tickets": {"1": wallet.tickets_1, "10": wallet.tickets_10, "100": wallet.tickets_100}, "spins": wallet.spins, "store_vouchers": wallet.store_vouchers}
+    return {
+        "balance_micros": wallet.balance_micros,
+        "balance": display_money(wallet.balance_micros),
+        "locked_micros": wallet.locked_micros,
+        "tickets": {"1": wallet.tickets_1, "10": wallet.tickets_10, "100": wallet.tickets_100},
+        "spins": wallet.spins,
+        "store_vouchers": wallet.store_vouchers,
+        "permanent_score_micros": wallet.permanent_score_micros,
+        "permanent_score": display_money(wallet.permanent_score_micros),
+        "snk_coin_micros": wallet.snk_coin_micros,
+        "snk_coin_balance": display_money(wallet.snk_coin_micros),
+        "inventory": {
+            "magnets": wallet.magnets,
+            "speed_boosts": wallet.speed_boosts,
+            "cameras": wallet.cameras,
+            "premium_spins": wallet.premium_spins,
+        },
+    }
 
 
 @app.get("/api/lobby")
@@ -150,6 +169,60 @@ async def roulette(user: User = Depends(current_user)) -> dict:
         return row, wallet.spins
     row, spins_remaining = await run_transaction(work)
     return {"id": row.id, "reward_type": row.reward_type, "reward_value": row.reward_value, "spins_remaining": spins_remaining}
+
+
+@app.get("/api/store")
+async def store(user: User = Depends(current_user), db: AsyncSession = Depends(get_db)) -> dict:
+    wallet = await db.get(Wallet, user.id)
+    items = [
+        {"code": code, "price_micros": item["price_micros"], "price": display_money(int(item["price_micros"])), "units": item["units"]}
+        for code, item in STORE_ITEMS.items()
+    ]
+    return {"items": items, "wallet": wallet_payload(wallet)}
+
+
+@app.post("/api/store/purchase", status_code=201)
+async def store_purchase(payload: ShopPurchaseInput, user: User = Depends(current_user)) -> dict:
+    async def work(db: AsyncSession):
+        fresh = await db.get(User, user.id)
+        purchase = await purchase_store_item(db, fresh, payload.item_code, payload.quantity)
+        wallet = await db.get(Wallet, user.id)
+        return purchase, wallet
+    purchase, wallet = await run_transaction(work)
+    return {"id": purchase.id, "item_code": purchase.item_code, "quantity": purchase.quantity, "wallet": wallet_payload(wallet)}
+
+
+@app.get("/api/vs/challenges")
+async def vs_challenges(db: AsyncSession = Depends(get_db)) -> dict:
+    rows = (await db.execute(select(VsChallenge).where(VsChallenge.status.in_(["open", "running"])).order_by(VsChallenge.created_at.desc()).limit(20))).scalars().all()
+    return {"challenges": [{"id": row.id, "title": row.title, "creator_platform_id": row.creator_platform_id, "reward_micros": row.reward_micros, "reward": display_money(row.reward_micros), "status": row.status, "participants_count": row.participants_count, "capacity": 30, "invite_enabled": row.invite_enabled} for row in rows]}
+
+
+@app.post("/api/vs/challenges", status_code=201)
+async def create_vs_challenge(payload: VsChallengeInput, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)) -> dict:
+    row = VsChallenge(creator_user_id=user.id, creator_platform_id=payload.creator_platform_id, title=payload.title, reward_micros=payload.reward_cents * MICROS_PER_CENT, invite_enabled=payload.invite_enabled)
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return {"id": row.id, "status": row.status, "capacity": 30, "reward": display_money(row.reward_micros)}
+
+
+@app.post("/api/vs/challenges/{challenge_id}/join", status_code=201)
+async def join_vs_challenge(challenge_id: str, payload: VsChallengeJoinInput, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)) -> dict:
+    challenge = (await db.execute(select(VsChallenge).where(VsChallenge.id == challenge_id).with_for_update())).scalar_one_or_none()
+    if not challenge or challenge.status != "open":
+        raise HTTPException(404, "التحدي غير متاح")
+    if challenge.participants_count >= 30:
+        raise HTTPException(409, "اكتمل عدد اللاعبين")
+    entry = VsChallengeEntry(challenge_id=challenge.id, user_id=user.id, platform_id=payload.platform_id)
+    db.add(entry)
+    challenge.participants_count += 1
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(409, "انضممت إلى هذا التحدي مسبقاً") from None
+    return {"id": entry.id, "challenge_id": challenge.id, "position": challenge.participants_count, "capacity": 30}
 
 
 @app.get("/api/referrals")
@@ -205,6 +278,7 @@ async def game_socket(websocket: WebSocket, tier_cents: int) -> None:
     if not user: await websocket.send_json({"type": "error", "code": "unauthorized", "message": "يجب تسجيل الدخول"}); await websocket.close(code=4401); return
     if tier_cents not in {1, 10, 100}: await websocket.close(code=4404); return
     room = await hub.room_for(tier_cents)
+    participant = None
     try:
         async def work(db: AsyncSession):
             fresh_user = await db.get(User, user.id)
@@ -215,7 +289,18 @@ async def game_socket(websocket: WebSocket, tier_cents: int) -> None:
             event = await websocket.receive_json()
             if event.get("type") == "input": room.input(participant.id, float(event.get("angle", 0)), int(event.get("sequence", 0)))
             elif event.get("type") == "ping": await websocket.send_json({"type": "pong", "at": event.get("at")})
+            elif event.get("type") == "power.activate":
+                code = str(event.get("code", ""))
+                try:
+                    await run_transaction(lambda db: consume_powerup(db, user.id, code))
+                    room.power(participant.id, code, True)
+                    await websocket.send_json({"type": "power.activated", "code": code})
+                except HTTPException as exc:
+                    await websocket.send_json({"type": "error", "code": "power_unavailable", "message": exc.detail})
+            elif event.get("type") == "power.release":
+                room.power(participant.id, str(event.get("code", "")), False)
     except WebSocketDisconnect:
-        await room.disconnect(participant.id)
+        if participant:
+            await room.disconnect(participant.id)
     except HTTPException as exc:
         await websocket.send_json({"type": "error", "code": "entry_rejected", "message": exc.detail}); await websocket.close(code=4409)

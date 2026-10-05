@@ -58,3 +58,19 @@ class AdminConfigInput(BaseModel):
 
 class WithdrawalDecision(BaseModel):
     decision: Literal["approved", "rejected"]
+
+
+class ShopPurchaseInput(BaseModel):
+    item_code: Literal["magnet", "speed", "camera", "premium_spin"]
+    quantity: int = Field(default=1, ge=1, le=10)
+
+
+class VsChallengeInput(BaseModel):
+    title: str = Field(min_length=3, max_length=120)
+    creator_platform_id: str = Field(min_length=2, max_length=80)
+    reward_cents: int = Field(ge=100, le=1_000_000)
+    invite_enabled: bool = True
+
+
+class VsChallengeJoinInput(BaseModel):
+    platform_id: str = Field(min_length=2, max_length=80)

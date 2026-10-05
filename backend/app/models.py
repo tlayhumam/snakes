@@ -47,6 +47,12 @@ class Wallet(Base):
     tickets_100: Mapped[int] = mapped_column(Integer, default=0)
     spins: Mapped[int] = mapped_column(Integer, default=3)
     store_vouchers: Mapped[int] = mapped_column(Integer, default=0)
+    permanent_score_micros: Mapped[int] = mapped_column(BigInteger, default=0)
+    snk_coin_micros: Mapped[int] = mapped_column(BigInteger, default=0)
+    magnets: Mapped[int] = mapped_column(Integer, default=0)
+    speed_boosts: Mapped[int] = mapped_column(Integer, default=0)
+    cameras: Mapped[int] = mapped_column(Integer, default=0)
+    premium_spins: Mapped[int] = mapped_column(Integer, default=0)
     version: Mapped[int] = mapped_column(Integer, default=1)
     user: Mapped[User] = relationship(back_populates="wallet")
 
@@ -106,6 +112,9 @@ class Participant(Base):
     state: Mapped[str] = mapped_column(String(20), default="alive")
     kills: Mapped[int] = mapped_column(Integer, default=0)
     earnings_micros: Mapped[int] = mapped_column(BigInteger, default=0)
+    round_score_micros: Mapped[int] = mapped_column(BigInteger, default=0)
+    collected_stars: Mapped[int] = mapped_column(Integer, default=0)
+    collected_snk_coins: Mapped[int] = mapped_column(Integer, default=0)
     __table_args__ = (UniqueConstraint("round_id", "user_id", name="uq_round_user"),)
 
 
@@ -160,6 +169,41 @@ class RouletteReward(Base):
     reward_value: Mapped[int] = mapped_column(BigInteger)
     cost_micros: Mapped[int] = mapped_column(BigInteger)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ShopPurchase(Base):
+    __tablename__ = "shop_purchases"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    item_code: Mapped[str] = mapped_column(String(30), index=True)
+    quantity: Mapped[int] = mapped_column(Integer, default=1)
+    cost_micros: Mapped[int] = mapped_column(BigInteger)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class VsChallenge(Base):
+    __tablename__ = "vs_challenges"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    creator_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    creator_platform_id: Mapped[str] = mapped_column(String(80), index=True)
+    title: Mapped[str] = mapped_column(String(120))
+    reward_micros: Mapped[int] = mapped_column(BigInteger)
+    status: Mapped[str] = mapped_column(String(20), default="open", index=True)
+    invite_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    participants_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class VsChallengeEntry(Base):
+    __tablename__ = "vs_challenge_entries"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    challenge_id: Mapped[str] = mapped_column(ForeignKey("vs_challenges.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    platform_id: Mapped[str] = mapped_column(String(80))
+    state: Mapped[str] = mapped_column(String(20), default="accepted")
+    score_micros: Mapped[int] = mapped_column(BigInteger, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    __table_args__ = (UniqueConstraint("challenge_id", "user_id", name="uq_vs_challenge_user"),)
 
 
 class AppSetting(Base):
