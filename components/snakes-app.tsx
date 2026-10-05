@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
+import NextLink from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Activity, ArrowDownToLine, ArrowUpFromLine, ChevronLeft, CircleDollarSign,
@@ -23,6 +23,10 @@ type View = "lobby" | "game" | "wallet" | "roulette" | "snake" | "referrals" | "
 type SnakeStyle = { primary: string; secondary: string; pattern: "dots" | "bands" | "stars" };
 type ArenaStats = { kills: number; players: number; mass: number; value: number; dead: boolean; roundScore: number; stars: number; snkCoins: number; coinDropActive: boolean };
 type ArenaControls = { magnetUntil: number; speed: boolean; cameraWide: boolean };
+
+function Link(props: React.ComponentProps<typeof NextLink>) {
+  return <NextLink {...props} prefetch={false} />;
+}
 
 const tiers = [
   { cents: 1, value: "$0.01", label: "للمبتدئين", tone: "mint", locked: false },
