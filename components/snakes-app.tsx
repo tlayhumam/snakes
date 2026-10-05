@@ -22,7 +22,7 @@ import { apiRequest } from "@/lib/api";
 type View = "lobby" | "game" | "wallet" | "roulette" | "snake" | "referrals" | "settings" | "store" | "vs-plus" | "admin" | "login" | "register";
 type SnakeStyle = { primary: string; secondary: string; pattern: "dots" | "bands" | "stars" };
 type ArenaStats = { kills: number; players: number; mass: number; value: number; dead: boolean; roundScore: number; stars: number; snkCoins: number; coinDropActive: boolean };
-type ArenaControls = { magnetUntil: number; speed: boolean; cameraWide: boolean };
+type ArenaControls = { magnetUntil: number; speed: boolean; cameraWide: boolean; steering: boolean; steerX: number; steerY: number };
 
 function Link(props: React.ComponentProps<typeof NextLink>) {
   return <NextLink {...props} prefetch={false} />;
@@ -68,10 +68,25 @@ function drawValueTag(ctx: CanvasRenderingContext2D, x: number, y: number, value
   ctx.font = "800 8px Tahoma, Arial"; ctx.fillStyle = "rgba(255,255,255,.72)"; ctx.fillText(caption, x, top - 5);
 }
 
+function VirtualJoystick({ onSteer, disabled }: { onSteer: (x: number, y: number, active: boolean) => void; disabled: boolean }) {
+  const baseRef = useRef<HTMLDivElement>(null); const pointerId = useRef<number | null>(null); const [knob, setKnob] = useState({ x: 0, y: 0 }); const [active, setActive] = useState(false);
+  const steer = (clientX: number, clientY: number) => { const rect = baseRef.current?.getBoundingClientRect(); if (!rect) return; const radius = rect.width * .31; const dx = clientX - (rect.left + rect.width / 2); const dy = clientY - (rect.top + rect.height / 2); const distance = Math.hypot(dx, dy); const scale = distance > radius ? radius / distance : 1; const x = dx * scale; const y = dy * scale; setKnob({ x, y }); setActive(true); onSteer(x / radius, y / radius, true); };
+  const release = (target?: HTMLDivElement) => { if (target && pointerId.current !== null && target.hasPointerCapture(pointerId.current)) target.releasePointerCapture(pointerId.current); pointerId.current = null; setKnob({ x: 0, y: 0 }); setActive(false); onSteer(0, 0, false); };
+  const keyDirection = (key: string) => ({ ArrowUp: [0, -1], w: [0, -1], W: [0, -1], ArrowDown: [0, 1], s: [0, 1], S: [0, 1], ArrowLeft: [-1, 0], a: [-1, 0], A: [-1, 0], ArrowRight: [1, 0], d: [1, 0], D: [1, 0] } as Record<string, [number, number]>)[key];
+  return <div className={`virtual-joystick ${active ? "active" : ""} ${disabled ? "disabled" : ""}`} role="group" aria-label="عصا التحكم بالتوجيه" tabIndex={disabled ? -1 : 0}
+    onPointerDown={event => { if (disabled) return; event.preventDefault(); pointerId.current = event.pointerId; event.currentTarget.setPointerCapture(event.pointerId); steer(event.clientX, event.clientY); }}
+    onPointerMove={event => { if (!disabled && pointerId.current === event.pointerId) steer(event.clientX, event.clientY); }}
+    onPointerUp={event => release(event.currentTarget)} onPointerCancel={event => release(event.currentTarget)}
+    onKeyDown={event => { const direction = keyDirection(event.key); if (!direction || disabled) return; event.preventDefault(); const radius = baseRef.current?.getBoundingClientRect().width ? baseRef.current.getBoundingClientRect().width * .31 : 36; setKnob({ x: direction[0] * radius, y: direction[1] * radius }); setActive(true); onSteer(direction[0], direction[1], true); }}
+    onKeyUp={event => { if (keyDirection(event.key)) release(); }} onBlur={() => release()}>
+    <div className="joystick-base" ref={baseRef}><span className="joystick-ring inner" /><span className="joystick-axis horizontal" /><span className="joystick-axis vertical" /><span className="joystick-arrow north" /><span className="joystick-arrow east" /><span className="joystick-arrow south" /><span className="joystick-arrow west" /><span className="joystick-knob" style={{ transform: `translate3d(calc(-50% + ${knob.x}px),calc(-50% + ${knob.y}px),0)` }}><Crosshair /></span></div>
+    <small>{active ? "توجيه" : "اسحب للتوجيه"}</small>
+  </div>;
+}
+
 function Arena({ interactive = false, style, entryValue = .1, onStats, controls, challengeMode = false }: { interactive?: boolean; style?: SnakeStyle; entryValue?: number; onStats?: React.Dispatch<React.SetStateAction<ArenaStats>>; controls?: React.MutableRefObject<ArenaControls>; challengeMode?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const target = useRef({ x: 1000, y: 260, active: false });
-  const fallbackControls = useRef<ArenaControls>({ magnetUntil: 0, speed: false, cameraWide: false });
+  const fallbackControls = useRef<ArenaControls>({ magnetUntil: 0, speed: false, cameraWide: false, steering: false, steerX: 0, steerY: 0 });
   useEffect(() => {
     const canvas = canvasRef.current; const ctx = canvas?.getContext("2d"); if (!canvas || !ctx) return;
     const worldWidth = 4200; const worldHeight = 2800;
@@ -92,7 +107,6 @@ function Arena({ interactive = false, style, entryValue = .1, onStats, controls,
     const draw = () => {
       const rect = canvas.getBoundingClientRect(); const dpr = Math.min(window.devicePixelRatio || 1, 2); const w = rect.width; const h = rect.height;
       if (canvas.width !== Math.floor(w * dpr) || canvas.height !== Math.floor(h * dpr)) { canvas.width = Math.floor(w * dpr); canvas.height = Math.floor(h * dpr); }
-      if (!target.current.active) target.current = { x: w * 1.3, y: h * .5, active: false };
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0); const g = ctx.createLinearGradient(0, 0, w, h); g.addColorStop(0, "#173e68"); g.addColorStop(1, "#071d34"); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
       if (interactive) {
         const zoom = controller.current.cameraWide ? .82 : 1.34;
@@ -115,7 +129,7 @@ function Arena({ interactive = false, style, entryValue = .1, onStats, controls,
         });
         if (!player.initialized) { for (let segment = bodyLimit; segment >= 0; segment--) player.body.push([player.x - segment * 4.7, player.y]); player.initialized = true; reportStats(); }
         if (!camera.initialized) { camera.x = Math.max(0, player.x - viewW / 2); camera.y = Math.max(0, player.y - viewH / 2); camera.initialized = true; }
-        if (!playerDead) { const screenX = (player.x - camera.x) * zoom; const screenY = (player.y - camera.y) * zoom; const wanted = Math.atan2(target.current.y - screenY, target.current.x - screenX); const diff = ((wanted - player.angle + Math.PI * 3) % (Math.PI * 2)) - Math.PI; player.angle += Math.max(-.045, Math.min(.045, diff)); const playerSpeed = controller.current.speed ? 2.68 : 1.62; player.x += Math.cos(player.angle) * playerSpeed; player.y += Math.sin(player.angle) * playerSpeed; player.body.push([player.x, player.y]); if (player.body.length > bodyLimit) player.body.shift(); }
+        if (!playerDead) { if (controller.current.steering && Math.hypot(controller.current.steerX, controller.current.steerY) > .12) { const wanted = Math.atan2(controller.current.steerY, controller.current.steerX); const diff = ((wanted - player.angle + Math.PI * 3) % (Math.PI * 2)) - Math.PI; player.angle += Math.max(-.055, Math.min(.055, diff)); } const playerSpeed = controller.current.speed ? 2.68 : 1.62; player.x += Math.cos(player.angle) * playerSpeed; player.y += Math.sin(player.angle) * playerSpeed; player.body.push([player.x, player.y]); if (player.body.length > bodyLimit) player.body.shift(); }
 
         if (frame > 45) bots.forEach((bot, index) => {
           if (!bot.alive || !bot.initialized) return;
@@ -149,7 +163,7 @@ function Arena({ interactive = false, style, entryValue = .1, onStats, controls,
         ctx.shadowColor = "rgba(239,79,79,.82)"; ctx.shadowBlur = 22; ctx.strokeStyle = "#ef5b58"; ctx.lineWidth = 18; ctx.strokeRect(12, 12, worldWidth - 24, worldHeight - 24); ctx.shadowBlur = 0; ctx.strokeStyle = "rgba(255,255,255,.72)"; ctx.lineWidth = 2; ctx.setLineDash([12, 12]); ctx.strokeRect(25, 25, worldWidth - 50, worldHeight - 50); ctx.setLineDash([]);
         bots.forEach((bot, index) => { if (!bot.alive || bot.x < camera.x - 180 || bot.x > camera.x + viewW + 180 || bot.y < camera.y - 180 || bot.y > camera.y + viewH + 180) return; const colors = botPalette[index % botPalette.length]; const botWidth = 18 + index % 5; drawSnake(ctx, bot.body, colors[0], colors[1], index % 3 === 0 ? "bands" : "dots", botWidth); drawValueTag(ctx, bot.x, bot.y, bot.value + bot.roundScore, `BOT ${String(index + 1).padStart(2, "0")}`, botWidth); });
         if (challengeMode) { const rewardPoints: Array<[number, number]> = []; const rewardX = worldWidth / 2 + Math.cos(frame / 150) * 470; const rewardY = worldHeight / 2 + Math.sin(frame / 110) * 310; for (let i = 18; i >= 0; i--) rewardPoints.push([rewardX - i * 5, rewardY + Math.sin(frame / 24 - i * .45) * 22]); drawSnake(ctx, rewardPoints, "#ffd858", "#ffffff", "stars", 18); drawValueTag(ctx, rewardX, rewardY, 200, "جائزة VS+", 18); }
-        const playerWidth = 28 + Math.min(collectedStars * .6, 14); drawSnake(ctx, player.body, style?.primary ?? "#ef4f4f", style?.secondary ?? "#fff4d1", style?.pattern, playerWidth); drawValueTag(ctx, player.x, player.y, entryValue + roundScore, "أنت", playerWidth);
+        const playerWidth = 28 + Math.min(collectedStars * .6, 14); if (controller.current.speed) { ctx.save(); ctx.globalAlpha = .24; ctx.shadowColor = "#ffe176"; ctx.shadowBlur = 24; ctx.strokeStyle = "#ffe176"; ctx.lineWidth = playerWidth + 15; ctx.beginPath(); player.body.forEach(([x, y], index) => index ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.stroke(); ctx.restore(); } drawSnake(ctx, player.body, style?.primary ?? "#ef4f4f", style?.secondary ?? "#fff4d1", style?.pattern, playerWidth); drawValueTag(ctx, player.x, player.y, entryValue + roundScore, controller.current.speed ? "أنت • سرعة ×1.65" : "أنت", playerWidth);
       } else {
         ctx.strokeStyle = "rgba(255,255,255,.05)"; ctx.lineWidth = 1; for (let x = 0; x < w; x += 32) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); } for (let y = 0; y < h; y += 32) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
         for (let i = 0; i < 34; i++) { const px = (i * 83 + 31) % Math.max(w, 1); const py = (i * 47 + 53) % Math.max(h, 1); ctx.beginPath(); ctx.fillStyle = i % 3 ? "#70dfb7" : "#ffd858"; ctx.arc(px, py, 2.5 + i % 2, 0, Math.PI * 2); ctx.fill(); }
@@ -159,8 +173,7 @@ function Arena({ interactive = false, style, entryValue = .1, onStats, controls,
     };
     draw(); return () => cancelAnimationFrame(animation);
   }, [challengeMode, controls, entryValue, interactive, onStats, style]);
-  const aim = (event: React.PointerEvent<HTMLCanvasElement>) => { const r = event.currentTarget.getBoundingClientRect(); target.current = { x: event.clientX - r.left, y: event.clientY - r.top, active: true }; };
-  return <canvas ref={canvasRef} onPointerMove={aim} onPointerDown={aim} onPointerLeave={() => { target.current.active = false; }} className="arena-canvas" aria-label={interactive ? "حلبة سنيكس كبيرة بكاميرا تتبع" : "معاينة حلبة سنيكس"} />;
+  return <canvas ref={canvasRef} className="arena-canvas" aria-label={interactive ? "حلبة سنيكس كبيرة بعصا تحكم" : "معاينة حلبة سنيكس"} />;
 }
 
 function Header({ active, balance }: { active: View; balance: number }) {
@@ -190,7 +203,7 @@ function Lobby() {
 function GameView() {
   const searchParams = useSearchParams(); const selectedTier = Number(searchParams.get("tier") ?? ".10"); const tierValue = [.01, .1, 1].includes(selectedTier) ? selectedTier : .1; const challengeMode = searchParams.get("mode") === "vs";
   const [seconds, setSeconds] = useState(300); const [queued, setQueued] = useState(true); const [expanded, setExpanded] = useState(false); const [arenaStats, setArenaStats] = useState<ArenaStats>({ kills: 0, players: 30, mass: 54, value: tierValue, dead: false, roundScore: 0, stars: 0, snkCoins: 0, coinDropActive: false }); const stageRef = useRef<HTMLDivElement>(null);
-  const controlsRef = useRef<ArenaControls>({ magnetUntil: 0, speed: false, cameraWide: false });
+  const controlsRef = useRef<ArenaControls>({ magnetUntil: 0, speed: false, cameraWide: false, steering: false, steerX: 0, steerY: 0 });
   const [inventory, setInventory] = useState({ magnet: 2, speed: 3, camera: 1 });
   const [activePowers, setActivePowers] = useState({ magnet: false, speed: false, camera: false });
   useEffect(() => { const queue = window.setTimeout(() => setQueued(false), 1200); return () => clearTimeout(queue); }, []);
@@ -201,9 +214,12 @@ function GameView() {
     try { await stageRef.current?.requestFullscreen(); setExpanded(true); } catch { setExpanded(true); }
   };
   const activateMagnet = () => { if (!inventory.magnet || activePowers.magnet || arenaStats.dead) return; const magnetUntil = Date.now() + 8000; controlsRef.current.magnetUntil = magnetUntil; setInventory(current => ({ ...current, magnet: current.magnet - 1 })); setActivePowers(current => ({ ...current, magnet: true })); window.setTimeout(() => { if (controlsRef.current.magnetUntil === magnetUntil) setActivePowers(current => ({ ...current, magnet: false })); }, 8000); };
-  const startSpeed = () => { if (activePowers.speed || !inventory.speed || arenaStats.dead) return; controlsRef.current.speed = true; setInventory(current => ({ ...current, speed: current.speed - 1 })); setActivePowers(current => ({ ...current, speed: true })); };
-  const stopSpeed = () => { controlsRef.current.speed = false; setActivePowers(current => ({ ...current, speed: false })); };
+  const engageSpeed = () => { if (controlsRef.current.speed || !inventory.speed || arenaStats.dead) return; controlsRef.current.speed = true; setInventory(current => ({ ...current, speed: current.speed - 1 })); setActivePowers(current => ({ ...current, speed: true })); };
+  const releaseSpeed = () => { controlsRef.current.speed = false; setActivePowers(current => ({ ...current, speed: false })); };
+  const startSpeed = (event: React.PointerEvent<HTMLButtonElement>) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); engageSpeed(); };
+  const stopSpeed = (event: React.PointerEvent<HTMLButtonElement>) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); releaseSpeed(); };
   const toggleCamera = () => { if (!activePowers.camera && !inventory.camera) return; if (!activePowers.camera) setInventory(current => ({ ...current, camera: current.camera - 1 })); const next = !activePowers.camera; controlsRef.current.cameraWide = next; setActivePowers(current => ({ ...current, camera: next })); };
+  const steerSnake = (x: number, y: number, active: boolean) => { controlsRef.current.steerX = x; controlsRef.current.steerY = y; controlsRef.current.steering = active; };
   const time = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
   const rank = Math.max(1, 6 - arenaStats.kills);
   return <section className="play-experience"><div className={`game-stage ${expanded ? "is-expanded" : ""}`} ref={stageRef}>
@@ -217,8 +233,9 @@ function GameView() {
       <div className="combat-hud"><div><Crosshair /><span>الإقصاءات</span><b>{arenaStats.kills}</b></div><div className="risk-score"><Sparkles /><span>نقاط الجولة</span><bdi>SNK {arenaStats.roundScore.toFixed(3)}</bdi></div><div><Crown /><span>الترتيب</span><b>#{rank}</b></div><div><Activity /><span>القيمة</span><bdi>${arenaStats.value.toFixed(3)}</bdi></div></div>
       <div className="inventory-hud"><span><Star /> {arenaStats.stars}<small>نجمة</small></span><span className="coin-slot"><Coins /> {arenaStats.snkCoins}<small>SNK 0.03</small></span></div>
       {arenaStats.coinDropActive && <div className="coin-alert"><Coins /><div><b>هطول عملات SNK</b><span>30 عملة • تختفي خلال 30 ثانية</span></div></div>}
-      <div className="power-dock" aria-label="مزايا الجولة"><button className={activePowers.magnet ? "active" : ""} disabled={!inventory.magnet || arenaStats.dead} onClick={activateMagnet}><Magnet /><span>المغناطيس</span><b>{activePowers.magnet ? "8ث" : inventory.magnet}</b></button><button className={activePowers.speed ? "active" : ""} disabled={!inventory.speed || arenaStats.dead} onPointerDown={startSpeed} onPointerUp={stopSpeed} onPointerCancel={stopSpeed} onPointerLeave={stopSpeed}><Gauge /><span>اضغط للسرعة</span><b>{inventory.speed}</b></button><button className={activePowers.camera ? "active" : ""} disabled={!activePowers.camera && !inventory.camera} onClick={toggleCamera}><Camera /><span>كاميرا واسعة</span><b>{activePowers.camera ? "ON" : inventory.camera}</b></button></div>
-      <div className="control-tip"><span className="control-orbit"><Crosshair /></span><span><b>التحكم</b> النجوم وحدها تضيف قيمة الإقصاء — نقاط الجولة تضيع إذا تم إقصاؤك</span></div>
+      <VirtualJoystick onSteer={steerSnake} disabled={queued || arenaStats.dead} />
+      <div className="power-dock" aria-label="مزايا الجولة"><button className={activePowers.magnet ? "active" : ""} disabled={!inventory.magnet || arenaStats.dead} onClick={activateMagnet}><Magnet /><span>المغناطيس</span><b>{activePowers.magnet ? "8ث" : inventory.magnet}</b></button><button className={activePowers.speed ? "active speed-active" : ""} disabled={!inventory.speed || arenaStats.dead} onPointerDown={startSpeed} onPointerUp={stopSpeed} onPointerCancel={stopSpeed} onKeyDown={event => { if (event.key === " " || event.key === "Enter") { event.preventDefault(); engageSpeed(); } }} onKeyUp={event => { if (event.key === " " || event.key === "Enter") releaseSpeed(); }} onBlur={releaseSpeed}><Gauge /><span>{activePowers.speed ? "تسارع نشط" : "اضغط مطولاً"}</span><b>{activePowers.speed ? "×1.65" : inventory.speed}</b></button><button className={activePowers.camera ? "active" : ""} disabled={!activePowers.camera && !inventory.camera} onClick={toggleCamera}><Camera /><span>كاميرا واسعة</span><b>{activePowers.camera ? "ON" : inventory.camera}</b></button></div>
+      <div className="control-tip"><span className="control-orbit"><Crosshair /></span><span><b>التحكم</b> اسحب عصا التوجيه • اضغط مطولاً على السرعة للتسارع</span></div>
       <div className="kill-feed"><span><b>الإقصاء</b> يحوّل قيمة الثعبان إلى 8 نجوم</span><span><b>البقاء للنهاية</b> يحفظ نقاط الجولة في إجمالك</span></div>
       {queued && <div className="queue-cover"><div className="spinner-ring" /><h1>اكتملت الغرفة</h1><p>أنت و29 لاعباً آلياً — تبدأ الجولة الآن</p></div>}
       {!queued && arenaStats.dead && <div className="queue-cover death-cover"><Crosshair /><h1>تم إقصاؤك</h1><p>فقدت نقاط الجولة المؤقتة، بينما بقيت عملات SNK التي جمعتها في خانة المخزون.</p><button onClick={() => window.location.reload()}>العب من جديد</button></div>}
