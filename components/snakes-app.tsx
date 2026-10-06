@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import NextLink from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Activity, ArrowDownToLine, ArrowUpFromLine, ChevronLeft, CircleDollarSign,
@@ -24,8 +23,8 @@ type SnakeStyle = { primary: string; secondary: string; pattern: "dots" | "bands
 type ArenaStats = { kills: number; players: number; mass: number; value: number; dead: boolean; roundScore: number; stars: number; snkCoins: number; coinDropActive: boolean };
 type ArenaControls = { magnetUntil: number; speed: boolean; cameraWide: boolean; steering: boolean; steerX: number; steerY: number };
 
-function Link(props: React.ComponentProps<typeof NextLink>) {
-  return <NextLink {...props} prefetch={false} />;
+function Link({ href, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) {
+  return <a {...props} href={href} />;
 }
 
 const tiers = [
@@ -129,7 +128,7 @@ function Arena({ interactive = false, style, entryValue = .1, onStats, controls,
         });
         if (!player.initialized) { for (let segment = bodyLimit; segment >= 0; segment--) player.body.push([player.x - segment * 4.7, player.y]); player.initialized = true; reportStats(); }
         if (!camera.initialized) { camera.x = Math.max(0, player.x - viewW / 2); camera.y = Math.max(0, player.y - viewH / 2); camera.initialized = true; }
-        if (!playerDead) { if (controller.current.steering && Math.hypot(controller.current.steerX, controller.current.steerY) > .12) { const wanted = Math.atan2(controller.current.steerY, controller.current.steerX); const diff = ((wanted - player.angle + Math.PI * 3) % (Math.PI * 2)) - Math.PI; player.angle += Math.max(-.055, Math.min(.055, diff)); } const playerSpeed = controller.current.speed ? 2.68 : 1.62; player.x += Math.cos(player.angle) * playerSpeed; player.y += Math.sin(player.angle) * playerSpeed; player.body.push([player.x, player.y]); if (player.body.length > bodyLimit) player.body.shift(); }
+        if (!playerDead) { if (controller.current.steering && Math.hypot(controller.current.steerX, controller.current.steerY) > .12) { const wanted = Math.atan2(controller.current.steerY, controller.current.steerX); const diff = ((wanted - player.angle + Math.PI * 3) % (Math.PI * 2)) - Math.PI; player.angle += Math.max(-.055, Math.min(.055, diff)); } const playerSpeed = controller.current.speed ? 3.38 : 2.05; player.x += Math.cos(player.angle) * playerSpeed; player.y += Math.sin(player.angle) * playerSpeed; player.body.push([player.x, player.y]); if (player.body.length > bodyLimit) player.body.shift(); }
 
         if (frame > 45) bots.forEach((bot, index) => {
           if (!bot.alive || !bot.initialized) return;
@@ -182,10 +181,10 @@ function Header({ active, balance }: { active: View; balance: number }) {
     <header className="topbar">
       <Link href="/wallet" className="balance-card"><span className="eyebrow">رصيدك التجريبي</span><strong><bdi>${(balance / 100).toFixed(2)}</bdi></strong><Coins /></Link>
       <Link href="/" className="brand"><span className="brand-mark">S</span><div><strong>SNAKES</strong><small>سنيكس</small></div></Link>
-      <Button variant="outline" size="icon" className="menu-button" onClick={() => setOpen(!open)} aria-label="فتح القائمة"><Menu /></Button>
+      <Button variant="outline" size="icon" className="menu-button" onClick={() => setOpen(!open)} aria-label={open ? "إغلاق القائمة" : "فتح القائمة"} aria-expanded={open} aria-controls="main-navigation"><Menu /></Button>
     </header>
     <div className="demo-banner">رصيد تجريبي — بلا قيمة نقدية</div>
-    <nav className={`quick-nav ${open ? "expanded" : ""}`} aria-label="التنقل الرئيسي">
+    <nav id="main-navigation" className={`quick-nav ${open ? "expanded" : ""}`} aria-label="التنقل الرئيسي">
       {navItems.map(item => <Link key={item.view} href={item.href} className={active === item.view ? "active" : ""}><item.icon />{item.label}</Link>)}
     </nav>
   </>;
