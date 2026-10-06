@@ -106,7 +106,7 @@ function Arena({ interactive = false, style, entryValue = .1, onStats, controls,
       if (canvas.width !== Math.floor(w * dpr) || canvas.height !== Math.floor(h * dpr)) { canvas.width = Math.floor(w * dpr); canvas.height = Math.floor(h * dpr); }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0); const g = ctx.createLinearGradient(0, 0, w, h); g.addColorStop(0, "#142b43"); g.addColorStop(.55, "#091827"); g.addColorStop(1, "#040b12"); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
       if (interactive) {
-        const zoom = controller.current.cameraWide ? (compactTouchView ? .5 : .8) : (compactTouchView ? .78 : 1.28);
+        const zoom = controller.current.cameraWide ? (compactTouchView ? .58 : .8) : (compactTouchView ? .88 : 1.28);
         const viewW = w / zoom; const viewH = h / zoom;
         bots.forEach((bot, index) => {
           if (!bot.alive) return;

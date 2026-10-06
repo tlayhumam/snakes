@@ -28,18 +28,12 @@ export function PwaInstallPrompt() {
       void navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" });
     }
 
-    const previewInstalled = process.env.NODE_ENV !== "production" && new URLSearchParams(window.location.search).has("pwa-preview");
-    if (isInstalled() || previewInstalled) {
-      const root = document.documentElement;
+    if (isInstalled()) {
       const orientation = window.screen.orientation as ScreenOrientation & { lock?: (mode: "landscape") => Promise<void> };
       const lockLandscape = () => { void orientation.lock?.("landscape").catch(() => undefined); };
-      root.classList.add("pwa-installed");
       lockLandscape();
       window.addEventListener("pointerdown", lockLandscape, { once: true });
-      return () => {
-        root.classList.remove("pwa-installed");
-        window.removeEventListener("pointerdown", lockLandscape);
-      };
+      return () => window.removeEventListener("pointerdown", lockLandscape);
     }
 
     const dismissedAt = Number(window.localStorage.getItem(DISMISS_KEY) || 0);

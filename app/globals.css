@@ -179,21 +179,4 @@ button { font: inherit; }
   .game-app-shell .live-game,.game-app-shell .live-game .arena-canvas { min-height:calc(100dvh - 43px); height:calc(100dvh - 43px); }
   .game-app-shell .live-game.is-expanded,.game-app-shell .live-game:fullscreen { height:100dvh; min-height:0; }.game-app-shell .live-game.is-expanded .arena-canvas,.game-app-shell .live-game:fullscreen .arena-canvas { flex:1; height:auto; min-height:0; }
   .game-app-shell .match-footer { display:none; }
-  html.pwa-installed .game-app-shell .match-commandbar { display:none; }
-  html.pwa-installed .game-app-shell .live-game,html.pwa-installed .game-app-shell .live-game .arena-canvas { min-height:100dvh; height:100dvh; }
-}
-@media (orientation: portrait) {
-  html.pwa-installed,html.pwa-installed body { width:100%; height:100%; overflow:hidden; background:#061a2d; }
-  html.pwa-installed .app-shell { position:fixed; top:0; left:0; width:100dvh; height:100dvw; min-height:0; padding:0; overflow:hidden; transform-origin:top left; transform:rotate(90deg) translateY(-100%); }
-  html.pwa-installed .lobby-app-shell .topbar { min-height:58px; padding:7px max(14px,env(safe-area-inset-right)) 7px max(14px,env(safe-area-inset-left)); }
-  html.pwa-installed .lobby-app-shell .menu-button { display:inline-flex; }
-  html.pwa-installed .lobby-app-shell .quick-nav { top:58px; }
-  html.pwa-installed .simple-lobby { min-height:calc(100dvw - 58px); }
-  html.pwa-installed .game-app-shell > .topbar,html.pwa-installed .game-app-shell > .demo-banner,html.pwa-installed .game-app-shell > .quick-nav,html.pwa-installed .game-app-shell > .app-footer { display:none; }
-  html.pwa-installed .game-app-shell .play-experience { width:100%; height:100dvw; margin:0; }
-  html.pwa-installed .game-app-shell .game-stage { height:100%; padding:4px 7px; border:0; border-radius:0; box-shadow:none; }
-  html.pwa-installed .game-app-shell .match-commandbar { display:none; }
-  html.pwa-installed .game-app-shell .match-leaders,html.pwa-installed .game-app-shell .match-footer { display:none; }
-  html.pwa-installed .game-app-shell .live-game,html.pwa-installed .game-app-shell .live-game .arena-canvas { min-height:100dvw; height:100dvw; }
-  html.pwa-installed .game-app-shell .live-game.is-expanded,html.pwa-installed .game-app-shell .live-game:fullscreen { height:100dvw; min-height:0; }
 }
