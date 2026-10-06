@@ -28,7 +28,13 @@ export function PwaInstallPrompt() {
       void navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" });
     }
 
-    if (isInstalled()) return;
+    if (isInstalled()) {
+      const orientation = window.screen.orientation as ScreenOrientation & { lock?: (mode: "landscape") => Promise<void> };
+      const lockLandscape = () => { void orientation.lock?.("landscape").catch(() => undefined); };
+      lockLandscape();
+      window.addEventListener("pointerdown", lockLandscape, { once: true });
+      return () => window.removeEventListener("pointerdown", lockLandscape);
+    }
 
     const dismissedAt = Number(window.localStorage.getItem(DISMISS_KEY) || 0);
     if (Date.now() - dismissedAt < DISMISS_FOR_MS) return;

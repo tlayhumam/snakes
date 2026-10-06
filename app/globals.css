@@ -71,6 +71,15 @@ button { font: inherit; }
 .ticket-line { display:flex; justify-content:space-between; gap:8px; margin:18px 0 12px; padding:12px 0; border-block:1px dashed #bcaa61; font-size:14px; }
 .play-button { width:100%; min-height:52px; background:#e94f4f; color:white; border:2px solid #8d2b32; box-shadow:0 6px 0 #8d2b32; font-weight:900; font-size:17px; }
 .play-button:hover { background:#d94444; transform:translateY(2px); box-shadow:0 4px 0 #8d2b32; }.microcopy { margin:14px 0 0; color:#68768a; font-size:12px; line-height:1.7; }
+.lobby-app-shell { min-height:100dvh; padding-bottom:0; display:flex; flex-direction:column; background:#061a2d; }
+.lobby-app-shell > .demo-banner,.lobby-app-shell > .app-footer,.lobby-app-shell .balance-card { display:none; }
+.simple-lobby { position:relative; flex:1; min-height:clamp(460px,calc(100dvh - 164px),780px); display:grid; place-items:center; overflow:hidden; isolation:isolate; }
+.simple-lobby::before { content:""; position:absolute; inset:0; z-index:1; background:radial-gradient(circle at 50% 50%,rgba(5,20,35,.06) 0 15%,rgba(3,15,27,.48) 62%,rgba(2,10,19,.78) 100%); pointer-events:none; }
+.lobby-arena { position:absolute; inset:-70px; opacity:.88; filter:saturate(1.16) contrast(1.04); }
+.lobby-arena .arena-canvas { width:100%; height:100%; min-height:100%; }
+.lobby-play-button { position:relative; z-index:2; width:min(330px,calc(100% - 46px)); min-height:76px; display:flex; align-items:center; justify-content:center; gap:13px; border:2px solid #fff1a9; border-radius:22px; background:linear-gradient(145deg,#ff665e,#d93d42); color:white; box-shadow:0 10px 0 #8d2b32,0 24px 58px rgba(0,0,0,.38),0 0 42px rgba(255,225,118,.2); font-size:clamp(22px,4vw,31px); font-weight:900; text-decoration:none; transform:translateY(-4px); transition:transform .16s ease,box-shadow .16s ease,filter .16s ease; }
+.lobby-play-button:hover { filter:brightness(1.06); transform:translateY(0); box-shadow:0 6px 0 #8d2b32,0 18px 44px rgba(0,0,0,.36),0 0 50px rgba(255,225,118,.25); }
+.lobby-play-button svg { width:30px; height:30px; fill:currentColor; }
 @media (max-width: 1050px) {
   .game-layout { grid-template-columns:1fr minmax(230px,290px); }.leaderboard { grid-column:1/-1; order:3; }
   .leaderboard ol { display:grid; grid-template-columns:repeat(5,1fr); gap:8px; }.leaderboard li { grid-template-columns:22px 1fr; padding:9px; border:1px solid #e2d38c; border-radius:11px; }.leaderboard li bdi { grid-column:2; }
@@ -79,6 +88,12 @@ button { font: inherit; }
   .topbar { grid-template-columns:auto 1fr auto; padding: max(11px,env(safe-area-inset-top)) 14px 11px; }.brand { grid-column:2; grid-row:1; justify-self:center; }.menu-button { grid-column:3; grid-row:1; display:inline-flex; }
   .balance-card { grid-column:1; grid-row:1; justify-self:start; min-width:145px; padding:8px 11px; }.quick-nav { display:none; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; margin:10px 12px 16px; padding:0; overflow:visible; }.quick-nav.expanded { display:grid; }.quick-nav a { min-width:0; justify-content:center; padding:10px 8px; text-align:center; }
   .game-layout { width:calc(100% - 20px); grid-template-columns:1fr; }.arena-card,.arena-canvas { min-height:490px; }.round-panel { grid-row:2; }.leaderboard { grid-row:3; }.leaderboard ol { grid-template-columns:1fr 1fr; }
+  .lobby-app-shell .topbar { min-height:72px; }
+  .lobby-app-shell .quick-nav { position:absolute; z-index:30; top:72px; inset-inline:0; padding:10px; margin:0 10px; border:1px solid rgba(255,255,255,.14); border-radius:16px; background:rgba(5,27,48,.97); box-shadow:0 18px 45px rgba(0,0,0,.38); }
+  .lobby-app-shell .quick-nav a { border-color:rgba(255,255,255,.16); background:rgba(255,255,255,.07); color:white; }
+  .lobby-app-shell .quick-nav a.active { background:#ffe176; color:#092a48; border-color:#ffe176; box-shadow:none; transform:none; }
+  .simple-lobby { min-height:calc(100dvh - 72px); }
+  .lobby-play-button { min-height:72px; }
 }
 @media (max-width: 560px) {
   .pwa-install { grid-template-columns:auto 1fr auto; gap:9px; }

@@ -27,11 +27,6 @@ function Link({ href, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> 
   return <a {...props} href={href} />;
 }
 
-const tiers = [
-  { cents: 1, value: "$0.01", label: "للمبتدئين", tone: "mint", locked: false },
-  { cents: 10, value: "$0.10", label: "التحدّي اليومي", tone: "yellow", locked: false },
-  { cents: 100, value: "$1.00", label: "المحترفون", tone: "coral", locked: true },
-] as const;
 const leaders = [["ليث", "$1.40"], ["نور", "$0.95"], ["كريم", "$0.80"], ["سما", "$0.55"], ["آدم", "$0.40"]];
 const botNames = ["برق", "نمر", "شبح", "صقر", "موج", "لهب", "ورد", "رعد", "نسر", "فهد", "نور", "سيف", "نجم", "قمر", "ذئب", "ريح", "شمس", "لؤلؤ", "شاهين", "كوبرا", "زمرّد", "عنبر", "مرجان", "ياسمين", "رمح", "أطلس", "وادي", "جبل", "بركان"];
 const botPalette = [
@@ -98,7 +93,7 @@ function Arena({ interactive = false, style, entryValue = .1, onStats, controls,
     const goldCoins: Array<{ x: number; y: number; expiresAt: number }> = [];
     const consumedFieldPellets = new Set<number>();
     const bots = botNames.map((name, index) => ({
-      name, x: 0, y: 0, angle: (index * 1.87) % (Math.PI * 2), speed: .72 + (index % 5) * .08,
+      name, x: 0, y: 0, angle: (index * 1.87) % (Math.PI * 2), speed: 1.02 + (index % 5) * .1,
       turn: .0034 + (index % 4) * .0012, body: [] as Array<[number, number]>, initialized: false, alive: true,
       bodyLimit: 28 + index % 16, value: .05 + (index % 5) * .05, roundScore: (index % 4) * .005,
     }));
@@ -109,14 +104,14 @@ function Arena({ interactive = false, style, entryValue = .1, onStats, controls,
       if (canvas.width !== Math.floor(w * dpr) || canvas.height !== Math.floor(h * dpr)) { canvas.width = Math.floor(w * dpr); canvas.height = Math.floor(h * dpr); }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0); const g = ctx.createLinearGradient(0, 0, w, h); g.addColorStop(0, "#173e68"); g.addColorStop(1, "#071d34"); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
       if (interactive) {
-        const zoom = controller.current.cameraWide ? (compactTouchView ? .76 : .82) : (compactTouchView ? 1.22 : 1.34);
+        const zoom = controller.current.cameraWide ? (compactTouchView ? .58 : .8) : (compactTouchView ? .88 : 1.28);
         const viewW = w / zoom; const viewH = h / zoom;
         bots.forEach((bot, index) => {
           if (!bot.alive) return;
           if (!bot.initialized) {
             const columns = 7; const column = index % columns; const row = Math.floor(index / columns);
-            bot.x = worldWidth / 2 + (column - 3) * 175 + ((index * 7) % 31 - 15); bot.y = worldHeight / 2 + (row - 2) * 150 + ((index * 11) % 29 - 14);
-            const startDx = bot.x - worldWidth / 2; const startDy = bot.y - worldHeight / 2; const startDistance = Math.hypot(startDx, startDy); if (startDistance < 315) { const startAngle = startDistance < 1 ? index * .7 : Math.atan2(startDy, startDx); bot.x = worldWidth / 2 + Math.cos(startAngle) * 325; bot.y = worldHeight / 2 + Math.sin(startAngle) * 325; }
+            bot.x = worldWidth / 2 + (column - 3) * 155 + ((index * 7) % 31 - 15); bot.y = worldHeight / 2 + (row - 2) * 125 + ((index * 11) % 29 - 14);
+            const startDx = bot.x - worldWidth / 2; const startDy = bot.y - worldHeight / 2; const startDistance = Math.hypot(startDx, startDy); if (startDistance < 280) { const startAngle = startDistance < 1 ? index * .7 : Math.atan2(startDy, startDx); bot.x = worldWidth / 2 + Math.cos(startAngle) * 292; bot.y = worldHeight / 2 + Math.sin(startAngle) * 292; }
             if (index === 17) { bot.x = worldWidth / 2 + 25; bot.y = worldHeight / 2 - 70; bot.angle = Math.PI / 2; }
             const initialLength = bot.bodyLimit; for (let segment = initialLength; segment >= 0; segment--) bot.body.push([bot.x - Math.cos(bot.angle) * segment * 4.5, bot.y - Math.sin(bot.angle) * segment * 4.5]);
             bot.initialized = true;
@@ -129,7 +124,7 @@ function Arena({ interactive = false, style, entryValue = .1, onStats, controls,
         });
         if (!player.initialized) { for (let segment = bodyLimit; segment >= 0; segment--) player.body.push([player.x - segment * 4.7, player.y]); player.initialized = true; reportStats(); }
         if (!camera.initialized) { camera.x = Math.max(0, player.x - viewW / 2); camera.y = Math.max(0, player.y - viewH / 2); camera.initialized = true; }
-        if (!playerDead) { if (controller.current.steering && Math.hypot(controller.current.steerX, controller.current.steerY) > .12) { const wanted = Math.atan2(controller.current.steerY, controller.current.steerX); const diff = ((wanted - player.angle + Math.PI * 3) % (Math.PI * 2)) - Math.PI; player.angle += Math.max(-.055, Math.min(.055, diff)); } const playerSpeed = controller.current.speed ? 3.38 : 2.05; player.x += Math.cos(player.angle) * playerSpeed; player.y += Math.sin(player.angle) * playerSpeed; player.body.push([player.x, player.y]); if (player.body.length > bodyLimit) player.body.shift(); }
+        if (!playerDead) { if (controller.current.steering && Math.hypot(controller.current.steerX, controller.current.steerY) > .12) { const wanted = Math.atan2(controller.current.steerY, controller.current.steerX); const diff = ((wanted - player.angle + Math.PI * 3) % (Math.PI * 2)) - Math.PI; player.angle += Math.max(-.055, Math.min(.055, diff)); } const playerSpeed = controller.current.speed ? 3.96 : 2.4; player.x += Math.cos(player.angle) * playerSpeed; player.y += Math.sin(player.angle) * playerSpeed; player.body.push([player.x, player.y]); if (player.body.length > bodyLimit) player.body.shift(); }
 
         if (frame > 45) bots.forEach((bot, index) => {
           if (!bot.alive || !bot.initialized) return;
@@ -191,13 +186,13 @@ function Header({ active, balance }: { active: View; balance: number }) {
   </>;
 }
 
-function Leaderboard() { return <aside className="leaderboard paper-card"><div className="section-heading"><span>أفضل الأرباح</span><Trophy /></div><ol>{leaders.map(([n, a], i) => <li key={n}><span className="rank">{i + 1}</span><b>{n}</b><bdi>{a}</bdi></li>)}</ol></aside>; }
-
 function Lobby() {
-  const [tier, setTier] = useState("$0.01");
   const router = useRouter();
   useEffect(() => { const doc = document as Document & { modelContext?: { registerTool: (tool: unknown, options?: unknown) => void } }; if (!doc.modelContext?.registerTool) return; const c = new AbortController(); void doc.modelContext.registerTool({ name: "start_demo_round", title: "ابدأ جولة تجريبية", description: "يفتح حلبة سنيكس التجريبية بالفئة المحددة.", inputSchema: { type: "object", properties: { tier: { type: "string", enum: ["0.01", "0.10", "1.00"] } }, required: ["tier"], additionalProperties: false }, annotations: { readOnlyHint: false, untrustedContentHint: false }, execute(input: unknown) { const selected = (input as { tier: string }).tier; router.push(`/game?tier=${selected}`); return { status: "opening", tier: selected }; } }, { signal: c.signal }); return () => c.abort(); }, [router]);
-  return <section className="game-layout"><Leaderboard /><section className="arena-card"><div className="arena-head"><div><span className="live-dot" /> الحلبة جاهزة</div><strong>05:00</strong><span>30 لاعباً</span></div><Arena /><div className="arena-overlay"><span>المستوى 2</span><h1>اختر جولتك وابدأ</h1><p>تفادى الأجسام واجمع النقاط واربح مع كل إقصاء</p></div></section><aside className="round-panel paper-card"><span className="eyebrow">رسوم الدخول</span><h2>جولات سريعة</h2><div className="tier-grid">{tiers.map(t => <button key={t.value} onClick={() => !t.locked && setTier(t.value)} className={`tier ${t.tone} ${tier === t.value ? "selected" : ""} ${t.locked ? "locked" : ""}`}><strong><bdi>{t.value}</bdi></strong><span>{t.locked ? "يتطلب إيداعاً" : t.label}</span></button>)}</div><div className="ticket-line"><span>تذاكر مجانية</span><strong>3 × <bdi>$0.01</bdi></strong></div><Button asChild className="play-button"><Link href={`/game?tier=${tier.slice(1)}`}>العب الآن بـ <bdi>{tier}</bdi></Link></Button><p className="microcopy">تكتمل الغرفة تلقائياً بلاعبين آليين معلّمين بوضوح.</p></aside></section>;
+  return <section className="simple-lobby" aria-label="ابدأ اللعب">
+    <div className="lobby-arena" aria-hidden="true"><Arena /></div>
+    <Button asChild className="lobby-play-button"><Link href="/game?tier=0.01"><Play />العب الآن</Link></Button>
+  </section>;
 }
 
 function GameView() {
@@ -337,5 +332,5 @@ export function SnakesApp({ initialView }: { initialView: View }) {
     default: content = <Lobby />;
   }
   if (initialView === "login" || initialView === "register") return content;
-  return <main className={`app-shell ${initialView === "game" ? "game-app-shell" : ""}`} dir="rtl"><Header active={initialView} balance={balance} />{content}<footer className="app-footer"><span>Snakes Prototype</span><span>جميع الأرصدة والعمليات تجريبية</span><Link href="/admin">دخول الإدارة</Link></footer></main>;
+  return <main className={`app-shell ${initialView === "game" ? "game-app-shell" : ""} ${initialView === "lobby" ? "lobby-app-shell" : ""}`} dir="rtl"><Header active={initialView} balance={balance} />{content}<footer className="app-footer"><span>Snakes Prototype</span><span>جميع الأرصدة والعمليات تجريبية</span><Link href="/admin">دخول الإدارة</Link></footer></main>;
 }
