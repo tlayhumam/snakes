@@ -90,6 +90,7 @@ function Arena({ interactive = false, style, entryValue = .1, onStats, controls,
     const canvas = canvasRef.current; const ctx = canvas?.getContext("2d"); if (!canvas || !ctx) return;
     const worldWidth = 4200; const worldHeight = 2800;
     const controller = controls ?? fallbackControls;
+    const compactTouchView = window.matchMedia("(pointer: coarse)").matches;
     let frame = 0; let animation = 0; let kills = 0; let collectedMass = 0; let bodyLimit = 54; let roundScore = 0; let collectedStars = 0; let snkCoins = 0; let playerDead = false; let lastReport = ""; let coinBatchSpawned = false;
     const player = { x: worldWidth / 2, y: worldHeight / 2, angle: 0, body: [] as Array<[number, number]>, initialized: false };
     const camera = { x: 0, y: 0, initialized: false };
@@ -108,7 +109,7 @@ function Arena({ interactive = false, style, entryValue = .1, onStats, controls,
       if (canvas.width !== Math.floor(w * dpr) || canvas.height !== Math.floor(h * dpr)) { canvas.width = Math.floor(w * dpr); canvas.height = Math.floor(h * dpr); }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0); const g = ctx.createLinearGradient(0, 0, w, h); g.addColorStop(0, "#173e68"); g.addColorStop(1, "#071d34"); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
       if (interactive) {
-        const zoom = controller.current.cameraWide ? .82 : 1.34;
+        const zoom = controller.current.cameraWide ? (compactTouchView ? .76 : .82) : (compactTouchView ? 1.22 : 1.34);
         const viewW = w / zoom; const viewH = h / zoom;
         bots.forEach((bot, index) => {
           if (!bot.alive) return;
