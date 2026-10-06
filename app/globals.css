@@ -168,15 +168,32 @@ button { font: inherit; }
 }
 @media (orientation: landscape) and (max-height: 620px) {
   .match-brand { gap:8px; }.match-brand .brand-mark { width:36px; height:36px; font-size:20px; }.match-brand b { font-size:11px; }.match-brand small { font-size:10px; }.fullscreen-button { min-height:38px; padding:0 10px; }.live-game .arena-head { min-height:46px; padding-inline:10px; }.live-game .arena-head strong { font-size:19px; }
-  .live-game.is-expanded .arena-head,.live-game:fullscreen .arena-head { flex-basis:38px; min-height:38px; padding-inline:58px 9px; }.arena-exit-fullscreen { top:3px; left:5px; min-height:31px; padding:0 8px; }.arena-exit-fullscreen span { display:none; }.match-leaders { grid-template-columns:auto repeat(5,minmax(92px,1fr)); gap:5px; }.match-leaders > div { grid-template-columns:19px 1fr auto; gap:5px; padding:4px 7px; font-size:11px; }.match-leaders > div > b { width:18px; height:18px; }.leaders-title { padding-inline:4px; font-size:11px; }.leaders-title svg { width:16px; }.combat-hud { top:52px; right:7px; gap:5px; }.combat-hud > div { min-width:104px; grid-template-columns:19px 1fr auto; gap:5px; padding:5px 7px; }.combat-hud svg { width:15px; }.combat-hud b,.combat-hud bdi { font-size:12px; }.kill-feed { top:52px; left:7px; }.kill-feed span { padding:6px 8px; font-size:10px; }.inventory-hud { top:94px; left:7px; gap:5px; }.inventory-hud > span { min-width:78px; padding:5px 7px; font-size:12px; }.coin-alert { top:92px; padding:6px 10px; }.control-tip { display:none; }.virtual-joystick { bottom:5px; width:118px; }.joystick-base { width:108px; }.power-dock { bottom:6px; gap:6px; }.power-dock button { min-width:114px; min-height:45px; padding:6px 8px; }.power-dock svg { width:20px; }
+  .live-game.is-expanded .arena-head,.live-game:fullscreen .arena-head { flex-basis:38px; min-height:38px; padding-inline:58px 9px; }.arena-exit-fullscreen { top:3px; left:5px; min-height:31px; padding:0 8px; }.arena-exit-fullscreen span { display:none; }.match-leaders { grid-template-columns:auto repeat(5,minmax(92px,1fr)); gap:5px; }.match-leaders > div { grid-template-columns:19px 1fr auto; gap:5px; padding:4px 7px; font-size:11px; }.match-leaders > div > b { width:18px; height:18px; }.leaders-title { padding-inline:4px; font-size:11px; }.leaders-title svg { width:16px; }.combat-hud { top:52px; right:7px; gap:5px; }.combat-hud > div { min-width:104px; grid-template-columns:19px 1fr auto; gap:5px; padding:5px 7px; }.combat-hud svg { width:15px; }.combat-hud b,.combat-hud bdi { font-size:12px; }.kill-feed { top:52px; left:7px; }.kill-feed span { padding:6px 8px; font-size:10px; }.inventory-hud { top:94px; left:7px; gap:5px; }.inventory-hud > span { min-width:78px; padding:5px 7px; font-size:12px; }.coin-alert { top:49px; min-width:0; padding:4px 8px; gap:5px; }.coin-alert svg { width:15px; }.coin-alert b { font-size:10px; }.coin-alert span { display:none; }.control-tip { display:none; }.virtual-joystick { bottom:5px; width:118px; }.joystick-base { width:108px; }.power-dock { bottom:6px; gap:6px; }.power-dock button { min-width:114px; min-height:45px; padding:6px 8px; }.power-dock svg { width:20px; }
   .game-app-shell { height:100dvh; min-height:0; padding:0; overflow:hidden; background:#061a2d; }
   .game-app-shell > .topbar,.game-app-shell > .demo-banner,.game-app-shell > .quick-nav,.game-app-shell > .app-footer { display:none; }
   .game-app-shell .play-experience { width:100%; height:100dvh; margin:0; }
   .game-app-shell .game-stage { height:100%; padding:4px 7px; border:0; border-radius:0; box-shadow:none; }
   .game-app-shell .match-commandbar { min-height:40px; padding:0 3px 3px; gap:7px; }
   .game-app-shell .command-metrics > span { min-width:86px; padding:5px 8px; }
-  .game-app-shell .match-leaders { min-height:31px; margin-bottom:2px; }
-  .game-app-shell .live-game,.game-app-shell .live-game .arena-canvas { min-height:calc(100dvh - 76px); height:calc(100dvh - 76px); }
+  .game-app-shell .match-leaders { display:none; }
+  .game-app-shell .live-game,.game-app-shell .live-game .arena-canvas { min-height:calc(100dvh - 43px); height:calc(100dvh - 43px); }
   .game-app-shell .live-game.is-expanded,.game-app-shell .live-game:fullscreen { height:100dvh; min-height:0; }.game-app-shell .live-game.is-expanded .arena-canvas,.game-app-shell .live-game:fullscreen .arena-canvas { flex:1; height:auto; min-height:0; }
   .game-app-shell .match-footer { display:none; }
+  html.pwa-installed .game-app-shell .match-commandbar { display:none; }
+  html.pwa-installed .game-app-shell .live-game,html.pwa-installed .game-app-shell .live-game .arena-canvas { min-height:100dvh; height:100dvh; }
+}
+@media (orientation: portrait) {
+  html.pwa-installed,html.pwa-installed body { width:100%; height:100%; overflow:hidden; background:#061a2d; }
+  html.pwa-installed .app-shell { position:fixed; top:0; left:0; width:100dvh; height:100dvw; min-height:0; padding:0; overflow:hidden; transform-origin:top left; transform:rotate(90deg) translateY(-100%); }
+  html.pwa-installed .lobby-app-shell .topbar { min-height:58px; padding:7px max(14px,env(safe-area-inset-right)) 7px max(14px,env(safe-area-inset-left)); }
+  html.pwa-installed .lobby-app-shell .menu-button { display:inline-flex; }
+  html.pwa-installed .lobby-app-shell .quick-nav { top:58px; }
+  html.pwa-installed .simple-lobby { min-height:calc(100dvw - 58px); }
+  html.pwa-installed .game-app-shell > .topbar,html.pwa-installed .game-app-shell > .demo-banner,html.pwa-installed .game-app-shell > .quick-nav,html.pwa-installed .game-app-shell > .app-footer { display:none; }
+  html.pwa-installed .game-app-shell .play-experience { width:100%; height:100dvw; margin:0; }
+  html.pwa-installed .game-app-shell .game-stage { height:100%; padding:4px 7px; border:0; border-radius:0; box-shadow:none; }
+  html.pwa-installed .game-app-shell .match-commandbar { display:none; }
+  html.pwa-installed .game-app-shell .match-leaders,html.pwa-installed .game-app-shell .match-footer { display:none; }
+  html.pwa-installed .game-app-shell .live-game,html.pwa-installed .game-app-shell .live-game .arena-canvas { min-height:100dvw; height:100dvw; }
+  html.pwa-installed .game-app-shell .live-game.is-expanded,html.pwa-installed .game-app-shell .live-game:fullscreen { height:100dvw; min-height:0; }
 }

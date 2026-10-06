@@ -49,6 +49,7 @@ function drawSnake(ctx: CanvasRenderingContext2D, points: Array<[number, number]
   const path = () => { ctx.beginPath(); points.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); };
   ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = "rgba(0,0,0,.34)"; ctx.lineWidth = width + 7; path(); ctx.stroke();
   ctx.shadowColor = primary; ctx.shadowBlur = 10; ctx.strokeStyle = primary; ctx.lineWidth = width; path(); ctx.stroke(); ctx.shadowBlur = 0;
+  ctx.save(); ctx.globalAlpha = .13; ctx.fillStyle = "white"; for (let index = 3; index < points.length - 2; index += 4) { const [x, y] = points[index]; ctx.beginPath(); ctx.arc(x, y, width * .43, 0, Math.PI * 2); ctx.fill(); } ctx.restore();
   ctx.strokeStyle = secondary; ctx.lineWidth = Math.max(3, width * .23); ctx.setLineDash(pattern === "bands" ? [8, 12] : pattern === "stars" ? [2, 18] : [3, 14]); ctx.stroke(); ctx.setLineDash([]);
   const [hx, hy] = points.at(-1)!; const [px, py] = points.at(-2)!; const angle = Math.atan2(hy - py, hx - px); const dx = Math.cos(angle); const dy = Math.sin(angle); const nx = -dy; const ny = dx; const headX = hx + dx * width * .12; const headY = hy + dy * width * .12; const head = width * .7;
   ctx.fillStyle = primary; ctx.beginPath(); ctx.arc(headX, headY, head, 0, Math.PI * 2); ctx.fill();
@@ -84,6 +85,7 @@ function Arena({ interactive = false, style, entryValue = .1, onStats, controls,
   useEffect(() => {
     const canvas = canvasRef.current; const ctx = canvas?.getContext("2d"); if (!canvas || !ctx) return;
     const worldWidth = 4200; const worldHeight = 2800;
+    const fieldFoodCount = 560;
     const controller = controls ?? fallbackControls;
     const compactTouchView = window.matchMedia("(pointer: coarse)").matches;
     let frame = 0; let animation = 0; let kills = 0; let collectedMass = 0; let bodyLimit = 54; let roundScore = 0; let collectedStars = 0; let snkCoins = 0; let playerDead = false; let lastReport = ""; let coinBatchSpawned = false;
@@ -93,7 +95,7 @@ function Arena({ interactive = false, style, entryValue = .1, onStats, controls,
     const goldCoins: Array<{ x: number; y: number; expiresAt: number }> = [];
     const consumedFieldPellets = new Set<number>();
     const bots = botNames.map((name, index) => ({
-      name, x: 0, y: 0, angle: (index * 1.87) % (Math.PI * 2), speed: 1.02 + (index % 5) * .1,
+      name, x: 0, y: 0, angle: (index * 1.87) % (Math.PI * 2), speed: 1.1 + (index % 5) * .11,
       turn: .0034 + (index % 4) * .0012, body: [] as Array<[number, number]>, initialized: false, alive: true,
       bodyLimit: 28 + index % 16, value: .05 + (index % 5) * .05, roundScore: (index % 4) * .005,
     }));
@@ -102,9 +104,9 @@ function Arena({ interactive = false, style, entryValue = .1, onStats, controls,
     const draw = () => {
       const rect = canvas.getBoundingClientRect(); const dpr = Math.min(window.devicePixelRatio || 1, 2); const w = rect.width; const h = rect.height;
       if (canvas.width !== Math.floor(w * dpr) || canvas.height !== Math.floor(h * dpr)) { canvas.width = Math.floor(w * dpr); canvas.height = Math.floor(h * dpr); }
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0); const g = ctx.createLinearGradient(0, 0, w, h); g.addColorStop(0, "#173e68"); g.addColorStop(1, "#071d34"); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0); const g = ctx.createLinearGradient(0, 0, w, h); g.addColorStop(0, "#142b43"); g.addColorStop(.55, "#091827"); g.addColorStop(1, "#040b12"); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
       if (interactive) {
-        const zoom = controller.current.cameraWide ? (compactTouchView ? .58 : .8) : (compactTouchView ? .88 : 1.28);
+        const zoom = controller.current.cameraWide ? (compactTouchView ? .5 : .8) : (compactTouchView ? .78 : 1.28);
         const viewW = w / zoom; const viewH = h / zoom;
         bots.forEach((bot, index) => {
           if (!bot.alive) return;
@@ -124,7 +126,7 @@ function Arena({ interactive = false, style, entryValue = .1, onStats, controls,
         });
         if (!player.initialized) { for (let segment = bodyLimit; segment >= 0; segment--) player.body.push([player.x - segment * 4.7, player.y]); player.initialized = true; reportStats(); }
         if (!camera.initialized) { camera.x = Math.max(0, player.x - viewW / 2); camera.y = Math.max(0, player.y - viewH / 2); camera.initialized = true; }
-        if (!playerDead) { if (controller.current.steering && Math.hypot(controller.current.steerX, controller.current.steerY) > .12) { const wanted = Math.atan2(controller.current.steerY, controller.current.steerX); const diff = ((wanted - player.angle + Math.PI * 3) % (Math.PI * 2)) - Math.PI; player.angle += Math.max(-.055, Math.min(.055, diff)); } const playerSpeed = controller.current.speed ? 3.96 : 2.4; player.x += Math.cos(player.angle) * playerSpeed; player.y += Math.sin(player.angle) * playerSpeed; player.body.push([player.x, player.y]); if (player.body.length > bodyLimit) player.body.shift(); }
+        if (!playerDead) { if (controller.current.steering && Math.hypot(controller.current.steerX, controller.current.steerY) > .12) { const wanted = Math.atan2(controller.current.steerY, controller.current.steerX); const diff = ((wanted - player.angle + Math.PI * 3) % (Math.PI * 2)) - Math.PI; player.angle += Math.max(-.062, Math.min(.062, diff)); } const playerSpeed = controller.current.speed ? 4.28 : 2.6; player.x += Math.cos(player.angle) * playerSpeed; player.y += Math.sin(player.angle) * playerSpeed; player.body.push([player.x, player.y]); if (player.body.length > bodyLimit) player.body.shift(); }
 
         if (frame > 45) bots.forEach((bot, index) => {
           if (!bot.alive || !bot.initialized) return;
@@ -139,7 +141,7 @@ function Arena({ interactive = false, style, entryValue = .1, onStats, controls,
           const magnetActive = controller.current.magnetUntil > Date.now();
           for (let pelletIndex = starPellets.length - 1; pelletIndex >= 0; pelletIndex--) { const pellet = starPellets[pelletIndex]; const distance = Math.hypot(player.x - pellet.x, player.y - pellet.y); if (magnetActive && distance < 260) { pellet.x += (player.x - pellet.x) * .055; pellet.y += (player.y - pellet.y) * .055; } if (distance >= (magnetActive ? 48 : 30)) continue; starPellets.splice(pelletIndex, 1); collectedMass += 1; collectedStars += 1; roundScore = Math.round((roundScore + pellet.value) * 1000) / 1000; bodyLimit = Math.min(180, bodyLimit + 2); reportStats(); }
           for (let coinIndex = goldCoins.length - 1; coinIndex >= 0; coinIndex--) { const coin = goldCoins[coinIndex]; if (frame >= coin.expiresAt) { goldCoins.splice(coinIndex, 1); reportStats(); continue; } if (Math.hypot(player.x - coin.x, player.y - coin.y) >= 34) continue; goldCoins.splice(coinIndex, 1); snkCoins += 1; reportStats(); }
-          for (let pelletIndex = 0; pelletIndex < 210; pelletIndex++) { if (consumedFieldPellets.has(pelletIndex)) continue; const px = 80 + ((pelletIndex * 197 + 31) % (worldWidth - 160)); const py = 80 + ((pelletIndex * 139 + 53) % (worldHeight - 160)); if (Math.hypot(player.x - px, player.y - py) >= 20) continue; consumedFieldPellets.add(pelletIndex); roundScore = Math.round((roundScore + .001) * 1000) / 1000; bodyLimit = Math.min(180, bodyLimit + 1); reportStats(); }
+          for (let pelletIndex = 0; pelletIndex < fieldFoodCount; pelletIndex++) { if (consumedFieldPellets.has(pelletIndex)) continue; const px = 80 + ((pelletIndex * 197 + 31) % (worldWidth - 160)); const py = 80 + ((pelletIndex * 139 + 53) % (worldHeight - 160)); if (Math.hypot(player.x - px, player.y - py) >= 23) continue; consumedFieldPellets.add(pelletIndex); roundScore = Math.round((roundScore + .001) * 1000) / 1000; bodyLimit = Math.min(180, bodyLimit + 1); reportStats(); }
         }
         if (!coinBatchSpawned && frame > 90) { coinBatchSpawned = true; for (let coinIndex = 0; coinIndex < 30; coinIndex++) { const angle = coinIndex * 2.399; const radius = 140 + (coinIndex % 6) * 70; goldCoins.push({ x: player.x + Math.cos(angle) * radius, y: player.y + Math.sin(angle) * radius, expiresAt: frame + 1800 }); } reportStats(); }
 
@@ -149,10 +151,11 @@ function Arena({ interactive = false, style, entryValue = .1, onStats, controls,
         desiredX = Math.max(0, Math.min(Math.max(0, worldWidth - viewW), desiredX)); desiredY = Math.max(0, Math.min(Math.max(0, worldHeight - viewH), desiredY)); camera.x += (desiredX - camera.x) * .09; camera.y += (desiredY - camera.y) * .09;
 
         ctx.setTransform(dpr * zoom, 0, 0, dpr * zoom, -camera.x * dpr * zoom, -camera.y * dpr * zoom);
-        const grid = 64; ctx.strokeStyle = "rgba(255,255,255,.055)"; ctx.lineWidth = 1;
+        const grid = 64; ctx.strokeStyle = "rgba(255,255,255,.038)"; ctx.lineWidth = 1;
         for (let x = Math.floor(camera.x / grid) * grid; x <= camera.x + viewW + grid; x += grid) { ctx.beginPath(); ctx.moveTo(x, camera.y); ctx.lineTo(x, camera.y + viewH); ctx.stroke(); }
         for (let y = Math.floor(camera.y / grid) * grid; y <= camera.y + viewH + grid; y += grid) { ctx.beginPath(); ctx.moveTo(camera.x, y); ctx.lineTo(camera.x + viewW, y); ctx.stroke(); }
-        for (let i = 0; i < 210; i++) { if (consumedFieldPellets.has(i)) continue; const px = 80 + ((i * 197 + 31) % (worldWidth - 160)); const py = 80 + ((i * 139 + 53) % (worldHeight - 160)); if (px < camera.x - 10 || px > camera.x + viewW + 10 || py < camera.y - 10 || py > camera.y + viewH + 10) continue; ctx.shadowColor = i % 3 ? "#70dfb7" : "#ffd858"; ctx.shadowBlur = 8; ctx.beginPath(); ctx.fillStyle = i % 3 ? "#70dfb7" : "#ffd858"; ctx.arc(px, py, 2.5 + i % 2, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0; }
+        const foodColors = ["#70dfb7", "#ffd858", "#ff7f73", "#7fc7ff", "#e784f4"];
+        for (let i = 0; i < fieldFoodCount; i++) { if (consumedFieldPellets.has(i)) continue; const px = 80 + ((i * 197 + 31) % (worldWidth - 160)); const py = 80 + ((i * 139 + 53) % (worldHeight - 160)); if (px < camera.x - 14 || px > camera.x + viewW + 14 || py < camera.y - 14 || py > camera.y + viewH + 14) continue; const color = foodColors[i % foodColors.length]; ctx.shadowColor = color; ctx.shadowBlur = 11; ctx.beginPath(); ctx.fillStyle = color; ctx.arc(px, py, 3.2 + i % 4 * .72, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0; }
         starPellets.forEach(pellet => { if (pellet.x < camera.x - 15 || pellet.x > camera.x + viewW + 15 || pellet.y < camera.y - 15 || pellet.y > camera.y + viewH + 15) return; ctx.save(); ctx.translate(pellet.x, pellet.y); ctx.rotate(frame / 28); ctx.shadowColor = "#ffe66f"; ctx.shadowBlur = 18; ctx.fillStyle = "#ffe66f"; ctx.beginPath(); for (let point = 0; point < 10; point++) { const radius = point % 2 ? pellet.size * .46 : pellet.size; const angle = -Math.PI / 2 + point * Math.PI / 5; const x = Math.cos(angle) * radius; const y = Math.sin(angle) * radius; if (point) ctx.lineTo(x, y); else ctx.moveTo(x, y); } ctx.closePath(); ctx.fill(); ctx.restore(); });
         goldCoins.forEach(coin => { if (coin.x < camera.x - 60 || coin.x > camera.x + viewW + 60 || coin.y < camera.y - 60 || coin.y > camera.y + viewH + 60) return; ctx.shadowColor = "#ffd858"; ctx.shadowBlur = 18; ctx.fillStyle = "#f4b918"; ctx.strokeStyle = "#fff0a5"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(coin.x, coin.y, 15, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.shadowBlur = 0; ctx.fillStyle = "#513500"; ctx.font = "900 8px Arial"; ctx.textAlign = "center"; ctx.fillText("SNK", coin.x, coin.y + 3); ctx.fillStyle = "#ffe176"; ctx.font = "900 10px Arial"; ctx.fillText("SNK 0.03", coin.x, coin.y - 23); });
         ctx.shadowColor = "rgba(239,79,79,.82)"; ctx.shadowBlur = 22; ctx.strokeStyle = "#ef5b58"; ctx.lineWidth = 18; ctx.strokeRect(12, 12, worldWidth - 24, worldHeight - 24); ctx.shadowBlur = 0; ctx.strokeStyle = "rgba(255,255,255,.72)"; ctx.lineWidth = 2; ctx.setLineDash([12, 12]); ctx.strokeRect(25, 25, worldWidth - 50, worldHeight - 50); ctx.setLineDash([]);

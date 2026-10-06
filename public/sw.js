@@ -1,4 +1,4 @@
-const CACHE_NAME = "snakes-shell-v2";
+const CACHE_NAME = "snakes-shell-v3";
 const SHELL = ["/", "/manifest.webmanifest", "/favicon.svg", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", event => {
